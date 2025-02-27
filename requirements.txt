@@ -1,0 +1,11 @@
+# Dependências para o projeto
+tkinter
+messagebox
+ttk
+datetime
+sqlite3
+streamlit
+pandas
+plotly
+psycopg2-binary==2.9.10
+pyinstaller
