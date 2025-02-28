@@ -1,143 +1,134 @@
 import sqlite3
-import tkinter as tk
+import subprocess
+from tkinter import *
 from tkinter import ttk, messagebox
-import matplotlib.pyplot as plt
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-import pandas as pd
 
-# Função para buscar dados do banco
-def get_data():
+# ---------------------- Banco de Dados ----------------------
+def conectar_bd():
+    """Cria a tabela paciente caso não exista."""
     conn = sqlite3.connect("medidor.sqlite")
     cursor = conn.cursor()
-    cursor.execute("SELECT nome, data_hora, peso, sistolica, diastolica, pulsacao FROM medida")
-    data = cursor.fetchall()
-    conn.close()
-    return data
 
-# Função para buscar nomes de pacientes
-def get_patient_names():
+    cursor.execute('''CREATE TABLE IF NOT EXISTS paciente (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nome TEXT NOT NULL,
+        data_nascimento DATE NOT NULL,
+        cpf TEXT UNIQUE,
+        cartao_sus TEXT UNIQUE NOT NULL,
+        telefone TEXT,
+        email TEXT
+    )''')
+    
+    cursor.execute('''CREATE TABLE IF NOT EXISTS endereco (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        paciente_id INTEGER UNIQUE NOT NULL,
+        cep TEXT NOT NULL,
+        rua TEXT NOT NULL,
+        numero TEXT NOT NULL,
+        bairro TEXT NOT NULL,
+        cidade TEXT NOT NULL,
+        estado TEXT NOT NULL,
+        complemento TEXT,
+        FOREIGN KEY (paciente_id) REFERENCES paciente(id) ON DELETE CASCADE
+    )''')
+    
+    cursor.execute('''CREATE TABLE IF NOT EXISTS medida (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        paciente_id INTEGER NOT NULL,
+        data_hora DATETIME DEFAULT CURRENT_TIMESTAMP,
+        peso REAL,
+        sistolica INTEGER,
+        diastolica INTEGER,
+        pulsacao INTEGER,
+        temperatura REAL,
+        FOREIGN KEY (paciente_id) REFERENCES paciente(id) ON DELETE CASCADE
+    )''')
+
+    conn.commit()
+    conn.close()
+
+# ---------------------- Funções ----------------------
+def listar_pacientes():
+    """Atualiza a tabela do dashboard com os pacientes cadastrados."""
+    for item in tree.get_children():
+        tree.delete(item)
+
     conn = sqlite3.connect("medidor.sqlite")
     cursor = conn.cursor()
-    cursor.execute("SELECT DISTINCT nome FROM medida")
-    names = [row[0] for row in cursor.fetchall()]
-    conn.close()
-    return names
-
-# Função para calcular médias
-def calculate_averages(df):
-    df['Data/Hora'] = pd.to_datetime(df['Data/Hora'])
-    df.set_index('Data/Hora', inplace=True)
-
-    # Média por dia
-    daily_avg = df.resample('D').mean()
-
-    # Limpar NaNs
-    daily_avg = daily_avg.fillna(method='ffill')  # Preencher NaNs se necessário
-    
-    return daily_avg
-
-# Função para exibir gráficos de todos os pacientes
-def show_all_patients_graphs():
-    data = get_data()
-    if not data:
-        messagebox.showwarning("Aviso", "Nenhuma medida encontrada.")
-        return
-    
-    df = pd.DataFrame(data, columns=["Nome", "Data/Hora", "Peso", "Sistólica", "Diastólica", "Pulsação"])
-    
-    daily_avg = calculate_averages(df)
-
-    # Criar uma nova janela para os gráficos
-    graph_window = tk.Toplevel(root)
-    graph_window.title("Gráficos de Evolução - Todos os Pacientes")
-
-    # Criar figuras para os gráficos
-    fig, axes = plt.subplots(3, 1, figsize=(6, 8))
-
-    # Plotar médias
-    daily_avg["Peso"].plot(ax=axes[0], marker="o", linestyle="-", label="Peso")
-    axes[0].set_title("Média Diária do Peso")
-    axes[0].legend()
-    
-    daily_avg[["Sistólica", "Diastólica"]].plot(ax=axes[1], marker="o", linestyle="-")
-    axes[1].set_title("Média Diária da Pressão Arterial")
-    axes[1].legend(["Sistólica", "Diastólica"])
-    
-    daily_avg["Pulsação"].plot(ax=axes[2], marker="o", linestyle="-", label="Pulsação")
-    axes[2].set_title("Média Diária da Pulsação")
-    axes[2].legend()
-
-    plt.tight_layout()
-
-    # Exibir os gráficos na interface Tkinter
-    canvas = FigureCanvasTkAgg(fig, master=graph_window)
-    canvas.draw()
-    canvas.get_tk_widget().pack()
-
-# Função para exibir gráficos de um paciente específico
-def show_patient_graphs(selected_patient):
-    conn = sqlite3.connect("medidor.sqlite")
-    cursor = conn.cursor()
-    cursor.execute("SELECT data_hora, peso, sistolica, diastolica, pulsacao FROM medida WHERE nome = ?", (selected_patient,))
-    data = cursor.fetchall()
+    cursor.execute("SELECT id, nome, cartao_sus FROM paciente")
+    pacientes = cursor.fetchall()
     conn.close()
 
-    if not data:
-        messagebox.showwarning("Aviso", "Nenhuma medida encontrada para o paciente selecionado.")
-        return
-    
-    df = pd.DataFrame(data, columns=["Data/Hora", "Peso", "Sistólica", "Diastólica", "Pulsação"])
-    
-    daily_avg = calculate_averages(df)
+    for paciente in pacientes:
+        # Adiciona uma linha na tabela com os dados do paciente e os botões
+        tree.insert("", "end", values=(paciente[0], paciente[1], paciente[2], "Medir", "Editar"))
 
-    # Criar uma nova janela para os gráficos do paciente
-    graph_window = tk.Toplevel(root)
-    graph_window.title(f"Gráficos de Evolução - {selected_patient}")
+def abrir_medidor(paciente_id, nome_paciente):
+    """Abre a janela do medidor (medidor.py) com os dados do paciente."""
+    try:
+        # Caminho para o interpretador Python do ambiente virtual
+        python_path = r".\venv\Scripts\python.exe"  # Ajuste o caminho conforme necessário
+        subprocess.Popen([python_path, "medidor.py", str(paciente_id), nome_paciente])
+    except FileNotFoundError:
+        messagebox.showerror("Erro", "Arquivo 'medidor.py' não encontrado ou ambiente virtual incorreto!")
 
-    # Criar figuras para os gráficos
-    fig, axes = plt.subplots(3, 1, figsize=(6, 8))
+def abrir_cadastro():
+    """Abre a janela do medidor (cadastropaciente.py)."""
+    try:
+        subprocess.Popen(["python", "cadastropaciente.py"])
+    except FileNotFoundError:
+        messagebox.showerror("Erro", "Arquivo 'cadastropaciente.py' não encontrado!")
 
-    daily_avg["Peso"].plot(ax=axes[0], marker="o", linestyle="-", label="Peso")
-    axes[0].set_title("Média Diária do Peso")
-    axes[0].legend()
-    
-    daily_avg[["Sistólica", "Diastólica"]].plot(ax=axes[1], marker="o", linestyle="-")
-    axes[1].set_title("Média Diária da Pressão Arterial")
-    axes[1].legend(["Sistólica", "Diastólica"])
-    
-    daily_avg["Pulsação"].plot(ax=axes[2], marker="o", linestyle="-", label="Pulsação")
-    axes[2].set_title("Média Diária da Pulsação")
-    axes[2].legend()
+# ---------------------- Interface Tkinter ----------------------
+root = Tk()
+root.title("Dashboard - Monitoramento de Pacientes")
+root.geometry("800x500")
 
-    plt.tight_layout()
+frame_top = Frame(root, height=100, bg="#329542")
+frame_top.pack(fill=X)
 
-    # Exibir os gráficos na interface Tkinter
-    canvas = FigureCanvasTkAgg(fig, master=graph_window)
-    canvas.draw()
-    canvas.get_tk_widget().pack()
+frame_main = Frame(root)
+frame_main.pack(fill=BOTH, expand=True)
 
-# Função para atualizar o gráfico ao selecionar um paciente
-def on_patient_select(event):
-    selected_patient = patient_combo.get()
-    show_patient_graphs(selected_patient)
+Label(frame_top, text="Dashboard de Pacientes", font=("Arial", 18), bg="#329542", fg="white").pack(pady=20)
 
-# Criando a interface principal
-root = tk.Tk()
-root.title("Dashboard de Medidas")
-root.geometry("500x400")
+# Botões de navegação
+btn_frame = Frame(frame_main)
+btn_frame.pack(pady=10)
 
-# Botão para visualizar gráficos de todos os pacientes
-btn_graficos = ttk.Button(root, text="Exibir Gráficos de Todos os Pacientes", command=show_all_patients_graphs)
-btn_graficos.pack(pady=10)
+Button(btn_frame, text="Novo Paciente", command=abrir_cadastro, bg="#329542", fg="white").pack(side=LEFT, padx=5)
+Button(btn_frame, text="Abrir Medidor", command=abrir_medidor, bg="#1E90FF", fg="white").pack(side=LEFT, padx=5)
 
-# Dropdown para selecionar paciente
-patient_names = get_patient_names()
-patient_combo = ttk.Combobox(root, values=patient_names, state="readonly")
-patient_combo.pack(pady=10)
-patient_combo.bind("<<ComboboxSelected>>", on_patient_select)
+# Tabela de pacientes
+columns = ("ID", "Nome", "Cartão SUS", "Medir", "Editar")
+tree = ttk.Treeview(frame_main, columns=columns, show="headings")
+tree.pack(fill=BOTH, expand=True, padx=10, pady=10)
 
-# Botão de saída
-btn_sair = ttk.Button(root, text="Sair", command=root.quit)
-btn_sair.pack(pady=10)
+for col in columns:
+    tree.heading(col, text=col)
+    tree.column(col, width=150)
+
+# Função para lidar com cliques na Treeview
+def on_treeview_click(event):
+    """Função chamada ao clicar na Treeview."""
+    region = tree.identify_region(event.x, event.y)  # Identifica a região clicada
+    if region == "cell":  # Verifica se o clique foi em uma célula
+        column = tree.identify_column(event.x)  # Identifica a coluna clicada
+        item = tree.identify_row(event.y)  # Obtém o item clicado
+
+        if item:  # Verifica se um item foi clicado
+            if column == "#4":  # Coluna "Medir"
+                paciente_id = tree.item(item, "values")[0]  # Obtém o ID do paciente
+                nome_paciente = tree.item(item, "values")[1]  # Obtém o nome do paciente
+                abrir_medidor(paciente_id, nome_paciente)
+            elif column == "#5":  # Coluna "Editar"
+                messagebox.showinfo("Editar", "Funcionalidade de edição ainda não implementada.")
+
+# Vincula o evento de clique à Treeview
+tree.bind("<Button-1>", on_treeview_click)
+
+# Inicializa o banco de dados e carrega a tabela
+conectar_bd()
+listar_pacientes()
 
 root.mainloop()

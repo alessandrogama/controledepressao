@@ -1,0 +1,28 @@
+# Ignorar pastas de ambiente virtual
+venv/
+.env/
+.venv/
+
+# Ignorar arquivos de cache do Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Ignorar arquivos de configuração do VS Code
+.vscode/
+
+# Ignorar arquivos de banco de dados SQLite
+*.sqlite
+*.sqlite3
+
+# Ignorar arquivos de log
+*.log
+
+# Ignorar arquivos de cache de testes
+.pytest_cache/
+.mypy_cache/
+
+# Ignorar arquivos de distribuição e build
+dist/
+build/
+*.egg-info/

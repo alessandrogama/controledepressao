@@ -1,140 +1,107 @@
-# ---------- Importando Bibliotecas ----------
-from tkinter import *
-from tkinter import messagebox  # messagebox é a biblioteca de mensagem do tkinter.
-from tkinter import ttk  # ttk é a biblioteca gráfica do tkinter.
-from datetime import datetime
 import sqlite3
+from tkinter import *
+from tkinter import ttk, messagebox
+from PIL import Image, ImageTk
+from datetime import datetime
 
-# ---------- Objeto da janela principal ----------
-janela = Tk()
+# ---------------------- Funções ----------------------
+def registrar_medida():
+    """Registra uma nova medida no banco de dados."""
+    paciente_id = paciente_id_entry.get().strip()
+    nome_paciente = nome_paciente_entry.get().strip()
+    pressao = pressao_entry.get().strip()
+    batimentos = batimentos_entry.get().strip()
+    temperatura = temperatura_entry.get().strip()
+    observacao = observacao_entry.get("1.0", END).strip()
 
-# ---------- Widgets - componentes da janela ----------
-# --- Atributos ---
-janela.title("Medição e monitoramento")  # Título da janela.
-janela.configure(bg="white")  # Cor do background da janela.
-janela.resizable(width=False, height=False)  # Tira a responsividade da janela.
-janela.attributes("-alpha", 0.97)  # Transparência da janela.
-# janela.iconbitmap(default="icon/logo.ico")
+    if not paciente_id or not pressao or not batimentos or not temperatura:
+        messagebox.showerror("Erro", "Todos os campos são obrigatórios, exceto Observação.")
+        return
 
-# --- Carregando imagens ---
-logo = PhotoImage(file="icon/logo.png")
+    try:
+        conn = sqlite3.connect("medidor.sqlite")
+        cursor = conn.cursor()
 
-# ------------------------------------------------------------------------------ 
-# ------------------------------- Banco de dados ------------------------------- 
+        cursor.execute("""INSERT INTO medida (paciente_id, pressao, batimentos, temperatura, data_hora, observacao)
+                          VALUES (?, ?, ?, ?, ?, ?)""",
+                       (paciente_id, pressao, batimentos, temperatura, datetime.now(), observacao))
 
-# Tratamento de exceções (erros)
-try:
-    # Conexão com o Banco de Dados SQLite.
-    bd = sqlite3.connect("medidor.sqlite")
+        conn.commit()
+        conn.close()
 
-    # bd.cursor() retornará um objeto do tipo conn que é utilizado para fazer consultas.
-    conn = bd.cursor()
+        messagebox.showinfo("Sucesso", "Medida registrada com sucesso!")
+        limpar_campos()
+    except sqlite3.Error as e:
+        messagebox.showerror("Erro", f"Erro ao salvar no banco de dados: {e}")
 
-    # Criação da tabela com o campo nome
-    conn.execute("""CREATE TABLE IF NOT EXISTS medida (
-                    nome text,
-                    data_hora text, 
-                    peso real, 
-                    sistolica integer, 
-                    diastolica integer, 
-                    pulsacao integer)""")
+def limpar_campos():
+    """Limpa os campos de entrada."""
+    pressao_entry.delete(0, END)
+    batimentos_entry.delete(0, END)
+    temperatura_entry.delete(0, END)
+    observacao_entry.delete("1.0", END)
 
-except (sqlite3.Error) as e:
-    print("\nFalha de conexão!\n {}".format(e))
-    janela.destroy()
+# ---------------------- Interface Tkinter ----------------------
+def abrir_tela_registro(paciente_id, nome_paciente):
+    """Abre a tela de registro de medidas com os dados do paciente."""
+    root = Tk()
+    root.title("Registro de Medidas")
+    root.geometry("500x550")
+    root.resizable(False, False)
 
-# ------------------------------------------------------------------------------ 
+    # Imagem de fundo
+    bg_image = Image.open("icon/logo.png")  # Substitua pelo caminho correto da sua imagem
+    bg_image = bg_image.resize((500, 550), Image.LANCZOS)
+    bg_photo = ImageTk.PhotoImage(bg_image)
 
-# -------------------------- Funções para eventos - events ---------------------
-def click_cadastrar():
-    data_hora = datetime.now()
-    nome = nomeEntry.get()  # Captura o nome do paciente
-    peso = pesoEntry.get()
-    sistolica = pasEntry.get()
-    diastolica = padEntry.get()
-    pulsacao = pulsacaoEntry.get()
+    bg_label = Label(root, image=bg_photo)
+    bg_label.place(relwidth=1, relheight=1)
 
-    if (nome == "" or peso == "" or sistolica == "" or diastolica == "" or pulsacao == ""):
-        messagebox.showerror(title="Cadastro Erro", message="Campo(s) vazio(s). Preencha todos os campos!")
-    else:
-        # Inserção no banco de dados
-        conn.execute("""INSERT INTO medida VALUES(?, ?, ?, ?, ?, ?)""", (nome, data_hora, peso, sistolica, diastolica, pulsacao))
-        bd.commit()
+    # Frame principal
+    frame = Frame(root, bg="white", bd=2, relief="ridge")
+    frame.place(relx=0.5, rely=0.5, anchor=CENTER, width=400, height=450)
 
-        messagebox.showinfo(title="Informação Cadastro", message="Dados cadastrados com Sucesso!")
+    # Título
+    Label(frame, text="Registro de Medidas", font=("Arial", 14, "bold"), bg="white").pack(pady=10)
 
-def click_sair():
-    if messagebox.askokcancel("Sair", "Deseja realmente sair e fechar o medidor?"):
-        bd.close()
-        janela.destroy()
+    # Campos de entrada
+    Label(frame, text="ID do Paciente:", bg="white").pack(anchor=W, padx=20, pady=(5, 0))
+    paciente_id_entry = Entry(frame, font=("Arial", 12))
+    paciente_id_entry.pack(fill=X, padx=20, pady=2)
+    paciente_id_entry.insert(0, paciente_id)  # Preenche o ID do paciente
+    paciente_id_entry.config(state="readonly")  # Torna o campo somente leitura
 
-#---------------------------------------------------------------------------- 
+    Label(frame, text="Nome do Paciente:", bg="white").pack(anchor=W, padx=20, pady=(5, 0))
+    nome_paciente_entry = Entry(frame, font=("Arial", 12))
+    nome_paciente_entry.pack(fill=X, padx=20, pady=2)
+    nome_paciente_entry.insert(0, nome_paciente)  # Preenche o nome do paciente
+    nome_paciente_entry.config(state="readonly")  # Torna o campo somente leitura
 
-# --- Frames ---
-ladoEsquerdo = Frame(janela, width=300, height=400, bg="#329542", relief="raise")
-ladoDireito = Frame(janela, width=497, height=400, bg="#63A355", relief="raise")
+    Label(frame, text="Pressão Arterial:", bg="white").pack(anchor=W, padx=20, pady=(5, 0))
+    pressao_entry = Entry(frame, font=("Arial", 12))
+    pressao_entry.pack(fill=X, padx=20, pady=2)
 
-# --- Imagem Logo ---
-logoLabel = Label(ladoEsquerdo, image=logo, bg="#329542")
+    Label(frame, text="Batimentos Cardíacos:", bg="white").pack(anchor=W, padx=20, pady=(5, 0))
+    batimentos_entry = Entry(frame, font=("Arial", 12))
+    batimentos_entry.pack(fill=X, padx=20, pady=2)
 
-# --- Nome do Paciente ---
-nomeLabel = Label(ladoDireito, text="Nome do Paciente:", font=("Indie Flower", 20), bg="#63A355", fg="white")
-nomeEntry = ttk.Entry(ladoDireito, width=20)
+    Label(frame, text="Temperatura (°C):", bg="white").pack(anchor=W, padx=20, pady=(5, 0))
+    temperatura_entry = Entry(frame, font=("Arial", 12))
+    temperatura_entry.pack(fill=X, padx=20, pady=2)
 
-# --- peso ---
-pesoLabel = Label(ladoDireito, text="Peso:", font=("Indie Flower", 20), bg="#63A355", fg="white")
-pesoEntry = ttk.Entry(ladoDireito, width=20)
+    Label(frame, text="Observação:", bg="white").pack(anchor=W, padx=20, pady=(5, 0))
+    observacao_entry = Text(frame, font=("Arial", 12), height=3)
+    observacao_entry.pack(fill=X, padx=20, pady=2)
 
-# --- pas ---
-pasLabel = Label(ladoDireito, text="Pressão Arterial Sistólica:", font=("Indie Flower", 20), bg="#63A355", fg="white")
-pasEntry = ttk.Entry(ladoDireito, width=20)
+    # Botões
+    btn_frame = Frame(frame, bg="white")
+    btn_frame.pack(pady=10)
 
-# --- pad ---
-padLabel = Label(ladoDireito, text="Pressão Arterial Diastólica:", font=("Indie Flower", 20), bg="#63A355", fg="white")
-padEntry = ttk.Entry(ladoDireito, width=20)
+    Button(btn_frame, text="Registrar", command=registrar_medida, bg="#329542", fg="white", font=("Arial", 12), width=12).pack(side=LEFT, padx=5)
+    Button(btn_frame, text="Limpar", command=limpar_campos, bg="#B22222", fg="white", font=("Arial", 12), width=12).pack(side=LEFT, padx=5)
 
-# --- pulsacao ---
-pulsacaoLabel = Label(ladoDireito, text="Pulsação:", font=("Indie Flower", 20), bg="#63A355", fg="white")
-pulsacaoEntry = ttk.Entry(ladoDireito, width=20)
+    root.mainloop()
 
-# --- botões ---
-sairButton = ttk.Button(ladoDireito, text="Sair", width=20, command=click_sair)
-cadastrarButton = ttk.Button(ladoDireito, text="Cadastrar", width=20, command=click_cadastrar)
-# ---------- Layout - Gerenciador de componentes da janela ----------
-# ----- Inseri Componentes -----
-# --- frames ---
-ladoEsquerdo.pack(side=LEFT)
-ladoDireito.pack(side=RIGHT)
-
-# --- imagem logo ---
-logoLabel.place(x=18, y=30)
-
-# --- nome do paciente ---
-nomeLabel.place(x=18, y=20)
-nomeEntry.place(x=250, y=26, height=30)
-
-# --- peso ---
-pesoLabel.place(x=18, y=89)
-pesoEntry.place(x=100, y=95, height=30)
-
-# --- pas ---
-pasLabel.place(x=18, y=158)
-pasEntry.place(x=350, y=164, height=30)
-
-# --- pad ---
-padLabel.place(x=18, y=227)
-padEntry.place(x=355, y=233, height=30)
-
-# --- pulsacao ---
-pulsacaoLabel.place(x=18, y=296)
-pulsacaoEntry.place(x=150, y=302, height=30)
-
-# --- botões ---
-sairButton.place(x=300, y=350, height=30)  # Ajuste no valor de y
-cadastrarButton.place(x=100, y=350, height=30)  # Ajuste no valor de y
-
-# ---------- Tamanho da janela ----------
-# --- width x height + left + topo ---
-janela.geometry("800x400+250+180")
-janela.protocol("WM_DELETE_WINDOW", click_sair)
-janela.mainloop()
+# # Exemplo de uso (para testar diretamente o medidor.py)
+# if __name__ == "__main__":
+#     abrir_tela_registro("1", "João Silva")
