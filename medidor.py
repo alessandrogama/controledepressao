@@ -36,6 +36,7 @@ def registrar_medida():
 
 def limpar_campos():
     """Limpa os campos de entrada."""
+    global paciente_id_entry, nome_paciente_entry, pressao_entry, batimentos_entry, temperatura_entry, observacao_entry
     pressao_entry.delete(0, END)
     batimentos_entry.delete(0, END)
     temperatura_entry.delete(0, END)
@@ -63,7 +64,8 @@ def abrir_tela_registro(paciente_id, nome_paciente):
 
     # Título
     Label(frame, text="Registro de Medidas", font=("Arial", 14, "bold"), bg="white").pack(pady=10)
-
+    global pressao_entry, batimentos_entry, temperatura_entry, observacao_entry
+    # Campos de entrada
     # Campos de entrada
     Label(frame, text="ID do Paciente:", bg="white").pack(anchor=W, padx=20, pady=(5, 0))
     paciente_id_entry = Entry(frame, font=("Arial", 12))
