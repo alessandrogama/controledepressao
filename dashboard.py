@@ -1,4 +1,5 @@
 import sqlite3
+import sys
 import subprocess
 from tkinter import *
 from tkinter import ttk, messagebox
@@ -60,29 +61,50 @@ def listar_pacientes():
     conn.close()
 
     for paciente in pacientes:
-        # Adiciona uma linha na tabela com os dados do paciente e os botões
-        tree.insert("", "end", values=(paciente[0], paciente[1], paciente[2], "Medir", "Editar"))
+        tree.insert("", "end", values=(paciente[0], paciente[1], paciente[2], "Medir", "Editar", "Historico"))
 
 def abrir_medidor(paciente_id, nome_paciente):
-    """Abre a janela do medidor (medidor.py) com os dados do paciente."""
-    try:
-        # Caminho para o interpretador Python do ambiente virtual
-        python_path = r".\venv\Scripts\python.exe"  # Ajuste o caminho conforme necessário
-        subprocess.Popen([python_path, "medidor.py", str(paciente_id), nome_paciente])
+    try: 
+        python_path = sys.executable 
+
+        import os
+        current_script_dir = os.path.dirname(os.path.abspath(__file__))
+        medidor_script_path = os.path.join(current_script_dir, "medidor.py")
+
+        if not os.path.exists(medidor_script_path):
+            messagebox.showerror("Erro", f"Arquivo 'medidor.py' não encontrado em: {medidor_script_path}")
+            return
+
+        command = [python_path, medidor_script_path, str(paciente_id), nome_paciente]
+        subprocess.Popen(command)
+
     except FileNotFoundError:
-        messagebox.showerror("Erro", "Arquivo 'medidor.py' não encontrado ou ambiente virtual incorreto!")
+        messagebox.showerror("Erro", "O interpretador Python ou o script 'medidor.py' não foram encontrados.")
+    except Exception as e:
+        messagebox.showerror("Erro Inesperado", f"Ocorreu um erro ao tentar abrir o medidor: {e}")
 
 def abrir_cadastro():
-    """Abre a janela do medidor (cadastropaciente.py)."""
     try:
         subprocess.Popen(["python", "cadastropaciente.py"])
     except FileNotFoundError:
         messagebox.showerror("Erro", "Arquivo 'cadastropaciente.py' não encontrado!")
+    except Exception as e:
+        messagebox.showerror("Erro Inesperado", f"Ocorreu um erro ao tentar abrir o cadastro: {e}")
+
+def historico_paciente(paciente_id):
+    """Exibe o histórico de medidas de um paciente específico."""
+    try:
+        import historicoPaciente
+        historicoPaciente.historico_paciente(paciente_id)
+    except ImportError:
+        messagebox.showerror("Erro", "Arquivo 'historicoPaciente.py' não encontrado!")
+    except Exception as e:
+        messagebox.showerror("Erro Inesperado", f"Ocorreu um erro ao tentar abrir o histórico: {e}")
 
 # ---------------------- Interface Tkinter ----------------------
 root = Tk()
 root.title("Dashboard - Monitoramento de Pacientes")
-root.geometry("800x500")
+root.geometry("1200x500")
 
 frame_top = Frame(root, height=100, bg="#329542")
 frame_top.pack(fill=X)
@@ -97,10 +119,9 @@ btn_frame = Frame(frame_main)
 btn_frame.pack(pady=10)
 
 Button(btn_frame, text="Novo Paciente", command=abrir_cadastro, bg="#329542", fg="white").pack(side=LEFT, padx=5)
-Button(btn_frame, text="Abrir Medidor", command=abrir_medidor, bg="#1E90FF", fg="white").pack(side=LEFT, padx=5)
-
+Button(btn_frame, text="Atualizar Lista", command=listar_pacientes, bg="#329542", fg="white").pack(side=LEFT, padx=5)
 # Tabela de pacientes
-columns = ("ID", "Nome", "Cartão SUS", "Medir", "Editar")
+columns = ("ID", "Nome", "Cartão SUS", "Medir", "Editar","Historico")
 tree = ttk.Treeview(frame_main, columns=columns, show="headings")
 tree.pack(fill=BOTH, expand=True, padx=10, pady=10)
 
@@ -120,9 +141,14 @@ def on_treeview_click(event):
             if column == "#4":  # Coluna "Medir"
                 paciente_id = tree.item(item, "values")[0]  # Obtém o ID do paciente
                 nome_paciente = tree.item(item, "values")[1]  # Obtém o nome do paciente
+                #abrir_cadastro()
+                #print(f"Clicou em 'Medir' para ID: {paciente_id}, Nome: {nome_paciente}") # Para depuração
                 abrir_medidor(paciente_id, nome_paciente)
             elif column == "#5":  # Coluna "Editar"
                 messagebox.showinfo("Editar", "Funcionalidade de edição ainda não implementada.")
+            elif column == "#6":  # Coluna "Historico"
+                paciente_id = tree.item(item, "values")[0]  # Obtém o ID do paciente
+                historico_paciente(paciente_id)  # Chama a função para exibir o histórico do paciente
 
 # Vincula o evento de clique à Treeview
 tree.bind("<Button-1>", on_treeview_click)
