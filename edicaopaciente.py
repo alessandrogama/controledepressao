@@ -4,16 +4,16 @@ import re
 import sqlite3
 import threading
 from tkinter import *
-from tkinter import ttk, messagebox
+from tkinter import messagebox
 from datetime import datetime
 import theme
 
+class EdicaoPacienteWindow:
+    """Janela modal para edição de dados cadastrais e endereço de pacientes."""
 
-class CadastroPacienteWindow:
-    """Janela de cadastro de pacientes com layout em dois painéis."""
-
-    def __init__(self, master, session=None, callback_on_success=None):
+    def __init__(self, master, paciente_id, session=None, callback_on_success=None):
         self.master = master
+        self.paciente_id = paciente_id
         self.session = session
         self.callback_on_success = callback_on_success
 
@@ -21,53 +21,46 @@ class CadastroPacienteWindow:
         if self.session is None:
             self.session = {"id": 0, "username": "dev", "role": "recepcionista"}
 
+        # Defesa em Profundidade: Autorização no Frontend
+        if self.session["role"] not in ("administrador", "recepcionista"):
+            messagebox.showerror(
+                "Acesso Negado",
+                "Apenas administradores e recepcionistas possuem permissão para editar dados de pacientes.",
+                parent=master
+            )
+            return
+
         self.window = Toplevel(master)
-        self.window.title("Cadastro de Pacientes")
-        self.window.geometry("1040x620")
-        self.window.minsize(820, 520)
+        self.window.title(f"Editar Paciente #{paciente_id}")
+        self.window.geometry("450x660")
+        self.window.resizable(False, False)
         self.window.configure(bg=theme.BG_DARK)
         theme.apply_theme(self.window)
 
-        self._build_layout()
-        self.listar_pacientes()
+        # Configurar modalidade (grab_set)
+        self.window.grab_set()
 
-    # ──────────────────────────────────────────────────────────
-    #  Layout
-    # ──────────────────────────────────────────────────────────
-    def _build_layout(self):
-        # Painel esquerdo — formulário (largura fixa)
-        self.panel_form = Frame(self.window, bg=theme.BG_CARD, width=400)
-        self.panel_form.pack(side=LEFT, fill=Y)
-        self.panel_form.pack_propagate(False)
+        self._build_ui()
+        self._carregar_dados()
 
-        # Divisor vertical
-        Frame(self.window, bg=theme.BORDER, width=1).pack(side=LEFT, fill=Y)
-
-        # Painel direito — tabela de pacientes
-        self.panel_table = Frame(self.window, bg=theme.BG_DARK)
-        self.panel_table.pack(side=LEFT, fill=BOTH, expand=True)
-
-        self._build_form()
-        self._build_table()
-
-    def _build_form(self):
-        p = self.panel_form
+    def _build_ui(self):
+        w = self.window
 
         # ── Cabeçalho colorido ────────────────────────────────
-        header = Frame(p, bg=theme.ACCENT, height=60)
+        header = Frame(w, bg=theme.ACCENT, height=60)
         header.pack(fill=X)
         header.pack_propagate(False)
         Label(
             header,
-            text="Novo Paciente",
+            text=f"Editar Cadastro · ID #{self.paciente_id}",
             font=theme.FONT_H2,
             bg=theme.ACCENT,
             fg="#0F1923",
         ).pack(expand=True)
 
         # ── Corpo do formulário ───────────────────────────────
-        body = Frame(p, bg=theme.BG_CARD, padx=20, pady=4)
-        body.pack(fill=BOTH, expand=True)
+        body = Frame(w, bg=theme.BG_CARD, padx=24, pady=8)
+        body.pack(fill=BOTH, expand=True, padx=12, pady=(12, 0))
         body.grid_columnconfigure(0, weight=1)
         body.grid_columnconfigure(1, weight=1)
 
@@ -129,84 +122,69 @@ class CadastroPacienteWindow:
         self.cep_entry.bind("<FocusOut>", self._on_cep_focus_out)
 
         # ── Rodapé com botões ─────────────────────────────────
-        Frame(p, bg=theme.BORDER, height=1).pack(fill=X, side=BOTTOM)
-        footer = Frame(p, bg=theme.BG_CARD, padx=20, pady=12)
+        footer = Frame(w, bg=theme.BG_DARK, padx=24, pady=16)
         footer.pack(fill=X, side=BOTTOM)
 
         Label(
             footer,
             text="* Campos obrigatórios",
             font=theme.FONT_SMALL,
-            bg=theme.BG_CARD,
+            bg=theme.BG_DARK,
             fg=theme.TEXT_SECONDARY,
         ).pack(anchor=W, pady=(0, 8))
 
-        btn_row = Frame(footer, bg=theme.BG_CARD)
+        btn_row = Frame(footer, bg=theme.BG_DARK)
         btn_row.pack(fill=X)
 
         theme.HoverButton(
             btn_row,
-            text="Cadastrar",
+            text="Salvar Alterações",
             style="primary",
             font=(theme.FONT_FAMILY, 10, "bold"),
-            command=self.cadastrar_paciente,
+            command=self.salvar_alteracoes,
         ).pack(side=LEFT, padx=(0, 10))
 
         theme.HoverButton(
             btn_row,
-            text="Limpar",
+            text="Cancelar",
             style="secondary",
             font=(theme.FONT_FAMILY, 10),
-            command=self._limpar_campos,
+            command=self.window.destroy,
         ).pack(side=LEFT)
 
-    def _build_table(self):
-        p = self.panel_table
+    def _carregar_dados(self):
+        """Busca as informações no banco de dados e preenche os campos."""
+        try:
+            paciente = database.obter_paciente_por_id(self.paciente_id)
+            if not paciente:
+                messagebox.showerror("Erro", "Paciente não localizado no banco de dados.", parent=self.window)
+                self.window.destroy()
+                return
 
-        # ── Cabeçalho ─────────────────────────────────────────
-        header = Frame(p, bg=theme.BG_CARD, height=64)
-        header.pack(fill=X)
-        header.pack_propagate(False)
-        Frame(p, bg=theme.BORDER, height=1).pack(fill=X)
+            # Preencher dados básicos
+            # paciente = (id, nome, data_nascimento, cpf, cartao_sus, telefone, email)
+            self.nome_entry.insert(0, paciente[1] or "")
+            self.nascimento_entry.insert(0, paciente[2] or "")
+            self.cpf_entry.insert(0, paciente[3] or "")
+            self.sus_entry.insert(0, paciente[4] or "")
+            self.telefone_entry.insert(0, paciente[5] or "")
+            self.email_entry.insert(0, paciente[6] or "")
 
-        Label(
-            header,
-            text="Pacientes Cadastrados",
-            font=theme.FONT_H2,
-            bg=theme.BG_CARD,
-            fg=theme.TEXT_PRIMARY,
-            padx=20,
-        ).pack(side=LEFT, fill=Y)
+            # Buscar e preencher endereço
+            endereco = database.obter_endereco_paciente(self.paciente_id)
+            if endereco:
+                # endereco = (cep, rua, numero, bairro, cidade, estado, complemento)
+                self.cep_entry.insert(0, endereco[0] or "")
+                self.rua_entry.insert(0, endereco[1] or "")
+                self.numero_entry.insert(0, endereco[2] or "")
+                self.bairro_entry.insert(0, endereco[3] or "")
+                self.cidade_entry.insert(0, endereco[4] or "")
+                self.estado_entry.insert(0, endereco[5] or "")
+                self.complemento_entry.insert(0, endereco[6] or "")
 
-        # ── Treeview ──────────────────────────────────────────
-        tree_frame = Frame(p, bg=theme.BG_DARK, padx=12, pady=12)
-        tree_frame.pack(fill=BOTH, expand=True)
-
-        cols = ("ID", "Nome", "Cartão SUS")
-        self.tree = ttk.Treeview(
-            tree_frame,
-            columns=cols,
-            show="headings",
-            style="Custom.Treeview",
-        )
-        vsb = ttk.Scrollbar(
-            tree_frame,
-            orient=VERTICAL,
-            command=self.tree.yview,
-            style="Custom.Vertical.TScrollbar",
-        )
-        self.tree.configure(yscrollcommand=vsb.set)
-        vsb.pack(side=RIGHT, fill=Y)
-        self.tree.pack(fill=BOTH, expand=True)
-
-        _col_cfg = {"ID": (60, CENTER), "Nome": (260, W), "Cartão SUS": (160, CENTER)}
-        for col in cols:
-            w, anchor = _col_cfg[col]
-            self.tree.heading(col, text=col)
-            self.tree.column(col, width=w, anchor=anchor)
-
-        self.tree.tag_configure("odd",  background=theme.ROW_ODD)
-        self.tree.tag_configure("even", background=theme.ROW_EVEN)
+        except Exception as e:
+            messagebox.showerror("Erro", f"Erro ao carregar dados do paciente: {e}", parent=self.window)
+            self.window.destroy()
 
     # ──────────────────────────────────────────────────────────
     #  Máscaras de entrada
@@ -249,6 +227,9 @@ class CadastroPacienteWindow:
         self.cep_entry.delete(0, END)
         self.cep_entry.insert(0, fmt)
 
+    # ──────────────────────────────────────────────────────────
+    #  Busca de CEP Automática
+    # ──────────────────────────────────────────────────────────
     def _on_cep_focus_out(self, event=None):
         cep = self.cep_entry.get().strip()
         cep_limpo = "".join(c for c in cep if c.isdigit())
@@ -275,7 +256,6 @@ class CadastroPacienteWindow:
                 self.complemento_entry.insert(0, dados.get("complemento", ""))
             self.numero_entry.focus()
         else:
-            # Exibir aviso amigável sem bloquear
             messagebox.showinfo(
                 "Consulta de CEP",
                 "Não foi possível consultar o CEP automaticamente. Preencha o endereço manualmente.",
@@ -283,10 +263,9 @@ class CadastroPacienteWindow:
             )
 
     # ──────────────────────────────────────────────────────────
-    #  Validação
+    #  Validação de CPF
     # ──────────────────────────────────────────────────────────
     def validar_cpf(self, cpf_str: str) -> bool:
-        """Valida o CPF usando o algoritmo oficial de dígitos verificadores."""
         cpf = "".join(c for c in cpf_str if c.isdigit())
         if len(cpf) != 11 or cpf == cpf[0] * 11:
             return False
@@ -303,19 +282,9 @@ class CadastroPacienteWindow:
         return r2 == int(cpf[10])
 
     # ──────────────────────────────────────────────────────────
-    #  Ações
+    #  Ação de Salvamento
     # ──────────────────────────────────────────────────────────
-    def _limpar_campos(self):
-        for e in (
-            self.nome_entry, self.nascimento_entry, self.cpf_entry,
-            self.sus_entry, self.telefone_entry, self.email_entry,
-            self.cep_entry, self.numero_entry, self.rua_entry,
-            self.bairro_entry, self.complemento_entry, self.cidade_entry,
-            self.estado_entry
-        ):
-            e.delete(0, END)
-
-    def cadastrar_paciente(self):
+    def salvar_alteracoes(self):
         nome           = self.nome_entry.get().strip()
         data_nasc      = self.nascimento_entry.get().strip()
         cpf            = self.cpf_entry.get().strip()
@@ -376,29 +345,33 @@ class CadastroPacienteWindow:
             messagebox.showerror("Validação", "O CEP informado deve conter 8 dígitos!", parent=self.window)
             return
 
-        # ── Defesa em Profundidade: Autorização no Backend ────
+        # Defesa em Profundidade: Autorização no Backend
         if self.session["role"] not in ("administrador", "recepcionista"):
             messagebox.showerror(
                 "Erro de Permissão",
-                "Ação não autorizada. Seu perfil não possui permissão para cadastrar pacientes.",
+                "Ação não autorizada. Seu perfil não possui permissão para editar dados de pacientes.",
                 parent=self.window
             )
             raise PermissionError("Acesso não autorizado para o perfil: " + self.session["role"])
 
         # ── Persistência ──────────────────────────────────────
         try:
-            paciente_id = database.cadastrar_paciente(nome, data_nasc, cpf, cartao_sus, telefone, email, self.session)
-            
-            # Salvar endereço
-            database.salvar_ou_atualizar_endereco(
-                paciente_id, cep, rua, numero, bairro, cidade, estado, complemento, self.session
+            # Atualiza paciente
+            database.atualizar_paciente(
+                self.paciente_id, nome, data_nasc, cpf, cartao_sus, telefone, email, self.session
             )
             
-            messagebox.showinfo("Sucesso", "Paciente cadastrado com sucesso!", parent=self.window)
-            self.listar_pacientes()
-            self._limpar_campos()
+            # Atualiza/Salva endereço
+            database.salvar_ou_atualizar_endereco(
+                self.paciente_id, cep, rua, numero, bairro, cidade, estado, complemento, self.session
+            )
+            
+            messagebox.showinfo("Sucesso", "Cadastro do paciente atualizado com sucesso!", parent=self.window)
+            
             if self.callback_on_success:
                 self.callback_on_success()
+                
+            self.window.destroy()
         except sqlite3.IntegrityError:
             messagebox.showerror(
                 "Validação",
@@ -408,29 +381,6 @@ class CadastroPacienteWindow:
         except Exception as e:
             messagebox.showerror(
                 "Erro",
-                f"Ocorreu um erro inesperado ao cadastrar o paciente: {e}",
+                f"Ocorreu um erro inesperado ao atualizar o paciente: {e}",
                 parent=self.window,
             )
-
-    def listar_pacientes(self):
-        for item in self.tree.get_children():
-            self.tree.delete(item)
-        try:
-            pacientes = database.listar_pacientes()
-            for i, pac in enumerate(pacientes):
-                sus = pac[2] if pac[2] else "—"
-                tag = "odd" if i % 2 == 0 else "even"
-                self.tree.insert("", "end", values=(pac[0], pac[1], sus), tags=(tag,))
-        except Exception as e:
-            messagebox.showerror("Erro", f"Erro ao listar pacientes: {e}", parent=self.window)
-
-
-# ──────────────────────────────────────────────────────────────
-#  Execução standalone
-# ──────────────────────────────────────────────────────────────
-if __name__ == "__main__":
-    root = Tk()
-    root.withdraw()
-    app = CadastroPacienteWindow(root)
-    app.window.protocol("WM_DELETE_WINDOW", lambda: (root.destroy(), sys.exit()))
-    root.mainloop()

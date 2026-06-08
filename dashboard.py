@@ -5,6 +5,7 @@ import database
 import theme
 from cadastropaciente import CadastroPacienteWindow
 from medidor import RegistroMedidasWindow
+from edicaopaciente import EdicaoPacienteWindow
 
 # ──────────────────────────────────────────────────────────────
 #  Estado da aplicação
@@ -184,7 +185,13 @@ def on_treeview_click(event):
                 parent=root
             )
             return
-        messagebox.showinfo("Em breve", "Funcionalidade de edição ainda não implementada.")
+        try:
+            EdicaoPacienteWindow(
+                root, paciente_id, _session,
+                callback_on_success=lambda: listar_pacientes(filtro=entry_search.get_value())
+            )
+        except Exception as e:
+            messagebox.showerror("Erro Inesperado", f"Ocorreu um erro ao abrir a tela de edição: {e}")
     elif column == "#6":    # Histórico
         if _session["role"] not in ("medico", "administrador"):
             database.registrar_log_auditoria(

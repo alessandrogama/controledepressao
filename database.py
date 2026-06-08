@@ -242,6 +242,7 @@ def cadastrar_paciente(nome, data_nascimento, cpf, cartao_sus, telefone, email, 
             "PATIENT_CREATED",
             f"patient_id={paciente_id}"
         )
+    return paciente_id
 
 def registrar_medida(paciente_id, data_hora, peso, sistolica, diastolica, pulsacao, temperatura, operador_session=None):
     """Insere uma nova medida no banco de dados e registra a ação na auditoria."""
@@ -279,3 +280,89 @@ def obter_medidas_paciente(paciente_id):
     medidas = cursor.fetchall()
     conn.close()
     return medidas
+
+def obter_paciente_por_id(paciente_id) -> tuple | None:
+    """Retorna os dados cadastrais básicos de um paciente pelo ID."""
+    conn = obter_conexao()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT id, nome, data_nascimento, cpf, cartao_sus, telefone, email
+        FROM paciente
+        WHERE id = ?
+    """, (paciente_id,))
+    paciente = cursor.fetchone()
+    conn.close()
+    return paciente
+
+def obter_endereco_paciente(paciente_id) -> tuple | None:
+    """Retorna o endereço de um paciente pelo ID, ou None se não existir."""
+    conn = obter_conexao()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT cep, rua, numero, bairro, cidade, estado, complemento
+        FROM endereco
+        WHERE paciente_id = ?
+    """, (paciente_id,))
+    endereco = cursor.fetchone()
+    conn.close()
+    return endereco
+
+def atualizar_paciente(paciente_id, nome, data_nascimento, cpf, cartao_sus, telefone, email, operador_session=None):
+    """Atualiza as informações cadastrais básicas do paciente e registra na auditoria."""
+    sus_val = cartao_sus.strip() if cartao_sus else None
+    if not sus_val:
+        sus_val = None
+        
+    cpf_val = cpf.strip() if cpf else None
+    if not cpf_val:
+        cpf_val = None
+
+    conn = obter_conexao()
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE paciente
+        SET nome = ?, data_nascimento = ?, cpf = ?, cartao_sus = ?, telefone = ?, email = ?
+        WHERE id = ?
+    """, (nome, data_nascimento, cpf_val, sus_val, telefone, email, paciente_id))
+    conn.commit()
+    conn.close()
+
+    if operador_session:
+        registrar_log_auditoria(
+            operador_session.get("id"),
+            operador_session.get("username"),
+            operador_session.get("role"),
+            "PATIENT_UPDATED",
+            f"patient_id={paciente_id}"
+        )
+
+def salvar_ou_atualizar_endereco(paciente_id, cep, rua, numero, bairro, cidade, estado, complemento, operador_session=None):
+    """Insere ou atualiza o endereço de um paciente e registra na auditoria."""
+    conn = obter_conexao()
+    cursor = conn.cursor()
+    
+    cursor.execute("SELECT id FROM endereco WHERE paciente_id = ?", (paciente_id,))
+    row = cursor.fetchone()
+    if row:
+        cursor.execute("""
+            UPDATE endereco
+            SET cep = ?, rua = ?, numero = ?, bairro = ?, cidade = ?, estado = ?, complemento = ?
+            WHERE paciente_id = ?
+        """, (cep, rua, numero, bairro, cidade, estado, complemento, paciente_id))
+    else:
+        cursor.execute("""
+            INSERT INTO endereco (paciente_id, cep, rua, numero, bairro, cidade, estado, complemento)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (paciente_id, cep, rua, numero, bairro, cidade, estado, complemento))
+    
+    conn.commit()
+    conn.close()
+
+    if operador_session:
+        registrar_log_auditoria(
+            operador_session.get("id"),
+            operador_session.get("username"),
+            operador_session.get("role"),
+            "ADDRESS_UPDATED",
+            f"patient_id={paciente_id}"
+        )
