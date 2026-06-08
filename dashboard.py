@@ -207,7 +207,7 @@ def on_treeview_click(event):
 #  Interface Principal
 # ──────────────────────────────────────────────────────────────
 root = Tk()
-root.title("Controle de Pressão — Dashboard")
+root.title("Controle de Pacientes — Dashboard")
 root.geometry("1150x640")
 root.minsize(900, 520)
 theme.apply_theme(root)
