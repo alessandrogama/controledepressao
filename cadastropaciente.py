@@ -11,9 +11,14 @@ import theme
 class CadastroPacienteWindow:
     """Janela de cadastro de pacientes com layout em dois painéis."""
 
-    def __init__(self, master, callback_on_success=None):
+    def __init__(self, master, session=None, callback_on_success=None):
         self.master = master
+        self.session = session
         self.callback_on_success = callback_on_success
+
+        # Fallback de sessão para modo de desenvolvimento/standalone
+        if self.session is None:
+            self.session = {"id": 0, "username": "dev", "role": "recepcionista"}
 
         self.window = Toplevel(master)
         self.window.title("Cadastro de Pacientes")
@@ -277,6 +282,15 @@ class CadastroPacienteWindow:
         if email and not re.match(r"^[^@]+@[^@]+\.[^@]+$", email):
             messagebox.showerror("Validação", "O formato do E-mail é inválido!", parent=self.window)
             return
+
+        # ── Defesa em Profundidade: Autorização no Backend ────
+        if self.session["role"] not in ("administrador", "recepcionista"):
+            messagebox.showerror(
+                "Erro de Permissão",
+                "Ação não autorizada. Seu perfil não possui permissão para cadastrar pacientes.",
+                parent=self.window
+            )
+            raise PermissionError("Acesso não autorizado para o perfil: " + self.session["role"])
 
         # ── Persistência ──────────────────────────────────────
         try:

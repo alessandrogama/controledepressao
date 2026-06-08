@@ -43,11 +43,16 @@ def _classificar_pressao(sistolica: int, diastolica: int) -> tuple[str, str]:
 class RegistroMedidasWindow:
     """Janela de registro de medidas vitais com indicador de pressão em tempo real."""
 
-    def __init__(self, master, paciente_id, nome_paciente, callback_on_success=None):
+    def __init__(self, master, paciente_id, nome_paciente, session=None, callback_on_success=None):
         self.master              = master
         self.paciente_id         = paciente_id
         self.nome_paciente       = nome_paciente
+        self.session             = session
         self.callback_on_success = callback_on_success
+
+        # Fallback de sessão para modo de desenvolvimento/standalone
+        if self.session is None:
+            self.session = {"id": 0, "username": "dev", "role": "enfermeiro"}
 
         self.window = Toplevel(master)
         self.window.title(f"Registro de Medidas — {nome_paciente}")
@@ -245,7 +250,16 @@ class RegistroMedidasWindow:
         self.lbl_class.config(text="", fg=theme.TEXT_SECONDARY)
 
     def registrar_medida(self):
-        """Valida os campos e persiste a medida no banco de dados."""
+        """Valida os campos e persiste a medida no banco de dados com verificação de perfil."""
+        # ── Defesa em Profundidade: Autorização no Backend ────
+        if self.session["role"] not in ("medico", "enfermeiro"):
+            messagebox.showerror(
+                "Erro de Permissão",
+                "Ação não autorizada. Seu perfil não possui permissão para registrar medições.",
+                parent=self.window
+            )
+            raise PermissionError("Acesso não autorizado para o perfil: " + self.session["role"])
+
         pressao_sistolica  = self.pressaoSistolica_entry.get().strip()
         pressao_diastolica = self.pressaoDiastolica_entry.get().strip()
         batimentos         = self.batimentos_entry.get().strip()

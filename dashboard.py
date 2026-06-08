@@ -10,6 +10,7 @@ from medidor import RegistroMedidasWindow
 #  Estado da aplicação
 # ──────────────────────────────────────────────────────────────
 _todos_pacientes = []
+_session = None
 
 # ──────────────────────────────────────────────────────────────
 #  Lógica de negócio
@@ -63,7 +64,7 @@ def _atualizar_lista():
 def abrir_medidor(paciente_id, nome_paciente):
     try:
         RegistroMedidasWindow(
-            root, paciente_id, nome_paciente,
+            root, paciente_id, nome_paciente, _session,
             callback_on_success=lambda: listar_pacientes(filtro=entry_search.get_value()),
         )
     except Exception as e:
@@ -71,9 +72,16 @@ def abrir_medidor(paciente_id, nome_paciente):
 
 
 def abrir_cadastro():
+    if _session["role"] not in ("administrador", "recepcionista"):
+        messagebox.showwarning(
+            "Acesso Negado",
+            "Apenas administradores e recepcionistas possuem permissão para cadastrar pacientes.",
+            parent=root
+        )
+        return
     try:
         CadastroPacienteWindow(
-            root,
+            root, _session,
             callback_on_success=lambda: listar_pacientes(filtro=entry_search.get_value()),
         )
     except Exception as e:
@@ -91,7 +99,7 @@ def historico_paciente(paciente_id):
 
 
 def on_treeview_click(event):
-    """Roteador de cliques na tabela de pacientes."""
+    """Roteador de cliques na tabela de pacientes de acordo com os perfis (RBAC)."""
     if tree.identify_region(event.x, event.y) != "cell":
         return
     column = tree.identify_column(event.x)
@@ -104,10 +112,31 @@ def on_treeview_click(event):
     nome_paciente = values[1]
 
     if column == "#4":      # Medir
+        if _session["role"] not in ("medico", "enfermeiro"):
+            messagebox.showwarning(
+                "Acesso Negado",
+                "Apenas médicos e enfermeiros possuem permissão para registrar medições.",
+                parent=root
+            )
+            return
         abrir_medidor(paciente_id, nome_paciente)
     elif column == "#5":    # Editar
+        if _session["role"] not in ("administrador", "recepcionista"):
+            messagebox.showwarning(
+                "Acesso Negado",
+                "Apenas administradores e recepcionistas possuem permissão para editar dados cadastrais.",
+                parent=root
+            )
+            return
         messagebox.showinfo("Em breve", "Funcionalidade de edição ainda não implementada.")
     elif column == "#6":    # Histórico
+        if _session["role"] not in ("medico", "administrador"):
+            messagebox.showwarning(
+                "Acesso Negado",
+                "Apenas médicos e administradores possuem permissão para acessar o histórico clínico de gráficos.",
+                parent=root
+            )
+            return
         historico_paciente(paciente_id)
 
 
@@ -211,6 +240,19 @@ Label(
     justify=CENTER,
     pady=12,
 ).pack(side=BOTTOM)
+
+lbl_operator = Label(
+    sidebar,
+    text="Operador:\nNão autenticado",
+    font=theme.FONT_SMALL,
+    bg=theme.BG_SIDEBAR,
+    fg=theme.TEXT_SECONDARY,
+    justify=LEFT,
+    anchor=W,
+    padx=22,
+    pady=10,
+)
+lbl_operator.pack(side=BOTTOM, fill=X)
 
 # ────────────────────────────────────────────────────────────
 #  ÁREA PRINCIPAL
@@ -319,5 +361,28 @@ lbl_status.pack(side=LEFT, fill=Y)
 # ──────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     conectar_bd()
-    listar_pacientes()
-    root.mainloop()
+    
+    # Ocultar janela raiz durante a autenticação
+    root.withdraw()
+    
+    from login import LoginWindow
+    login_app = LoginWindow(root)
+    root.wait_window(login_app.window)
+    
+    if login_app.session:
+        _session = login_app.session
+        
+        # Exibe as informações do operador ativo
+        role_label = _session["role"].capitalize()
+        lbl_operator.config(
+            text=f"Operador:\n{_session['username']} ({role_label})",
+            fg=theme.ACCENT
+        )
+        
+        # Restaurar janela principal
+        root.deiconify()
+        listar_pacientes()
+        root.mainloop()
+    else:
+        root.destroy()
+        sys.exit(0)

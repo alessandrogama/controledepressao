@@ -1,15 +1,77 @@
 import sqlite3
+import hashlib
+import secrets
 
 DB_NAME = "medidor.sqlite"
+
+def hash_password(password: str) -> str:
+    """Retorna o hash da senha gerado com PBKDF2-HMAC-SHA256 (seguro para MVP)."""
+    salt = secrets.token_hex(16)
+    key = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt.encode('utf-8'), 100000)
+    return f"pbkdf2_sha256$100000${salt}${key.hex()}"
+
+def verify_password(password: str, hashed: str) -> bool:
+    """Verifica se a senha fornecida corresponde ao hash armazenado."""
+    try:
+        parts = hashed.split('$')
+        if len(parts) != 4 or parts[0] != 'pbkdf2_sha256':
+            return False
+        iterations = int(parts[1])
+        salt = parts[2]
+        stored_key = parts[3]
+        key = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt.encode('utf-8'), iterations)
+        return secrets.compare_digest(key.hex(), stored_key)
+    except Exception:
+        return False
+
+def autenticar_usuario(username, password) -> dict | None:
+    """
+    Autentica o usuário no banco de dados e retorna a sessão do usuário se bem-sucedido.
+    Retorna None em caso de falha de credenciais.
+    """
+    conn = obter_conexao()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, username, password_hash, role FROM usuario WHERE username=?", (username,))
+    row = cursor.fetchone()
+    conn.close()
+    
+    if row:
+        user_id, user_name, stored_hash, role = row
+        if verify_password(password, stored_hash):
+            return {"id": user_id, "username": user_name, "role": role}
+    return None
 
 def obter_conexao():
     """Retorna uma conexão ativa com o banco de dados SQLite."""
     return sqlite3.connect(DB_NAME)
 
 def inicializar_banco():
-    """Cria as tabelas paciente, endereco e medida caso não existam e realiza migrações se necessário."""
+    """Cria as tabelas paciente, endereco, medida e usuario caso não existam e realiza migrações."""
     conn = obter_conexao()
     cursor = conn.cursor()
+
+    # Cria a tabela usuario
+    cursor.execute('''CREATE TABLE IF NOT EXISTS usuario (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL,
+        role TEXT NOT NULL
+    )''')
+
+    # Seed de usuários padrão (Apenas ambiente de desenvolvimento e testes)
+    # AVISO: Substitua ou remova estas contas em ambientes de produção real para garantir a segurança.
+    cursor.execute("SELECT COUNT(*) FROM usuario")
+    if cursor.fetchone()[0] == 0:
+        usuarios_seed = [
+            ("admin", "admin", "administrador"),
+            ("recepcionista1", "recepcionista", "recepcionista"),
+            ("enfermeiro1", "enfermeiro", "enfermeiro"),
+            ("medico1", "medico", "medico")
+        ]
+        for user, pwd, role in usuarios_seed:
+            pwd_hash = hash_password(pwd)
+            cursor.execute("INSERT INTO usuario (username, password_hash, role) VALUES (?, ?, ?)",
+                           (user, pwd_hash, role))
 
     # Cria a tabela paciente com cartao_sus opcional por padrão (para novos bancos)
     cursor.execute('''CREATE TABLE IF NOT EXISTS paciente (

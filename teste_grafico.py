@@ -1,5 +1,7 @@
 from tkinter import *
+# pyrefly: ignore [missing-import]
 from matplotlib.figure import Figure
+# pyrefly: ignore [missing-import]
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
 root = Tk()
