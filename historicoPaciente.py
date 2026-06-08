@@ -4,111 +4,229 @@ from datetime import datetime
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import database
+import theme
 
-def _parse_date(date_str):
-    """Função otimizada para realizar o parsing de strings de data para datetime."""
+
+def _parse_date(date_str: str):
+    """Converte strings de data do banco para objetos datetime."""
     if not date_str:
         return None
     date_str = date_str.strip()
     try:
-        # Tenta fatiar os milissegundos se existirem para acelerar o strptime padrão
         if "." in date_str:
             return datetime.strptime(date_str.split(".")[0], "%Y-%m-%d %H:%M:%S")
         return datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")
     except ValueError:
-        # Fallback rápido usando fromisoformat
         try:
             return datetime.fromisoformat(date_str)
         except Exception:
             return None
 
-def historico_paciente(paciente_id):
-    """Exibe o histórico de medidas de um paciente específico."""
-    historico_window = Toplevel()
-    historico_window.title("Histórico de Paciente")
-    historico_window.geometry("1208x800")
 
-    # Lista para rastrear figuras do Matplotlib criadas
+def historico_paciente(paciente_id):
+    """Exibe a janela de histórico com tabela de medidas e gráficos evolutivos."""
+
+    # ── Janela principal ──────────────────────────────────────
+    historico_window = Toplevel()
+    historico_window.title(f"Histórico de Medidas — Paciente #{paciente_id}")
+    historico_window.geometry("1280x820")
+    historico_window.configure(bg=theme.BG_DARK)
+    theme.apply_theme(historico_window)
+
     figuras = []
 
-    # Frame da Tabela
-    frame_table = Frame(historico_window)
-    frame_table.pack(fill=BOTH, expand=True, padx=10, pady=10)
+    # ── Cabeçalho ─────────────────────────────────────────────
+    header = Frame(historico_window, bg=theme.ACCENT, height=60)
+    header.pack(fill=X)
+    header.pack_propagate(False)
 
-    columns = ("data_hora", "peso", "sistolica", "diastolica", "pulsacao", "temperatura")
-    tree = ttk.Treeview(frame_table, columns=columns, show='headings')
+    Label(
+        header,
+        text=f"Histórico de Medidas — Paciente #{paciente_id}",
+        font=theme.FONT_H2,
+        bg=theme.ACCENT,
+        fg="#0F1923",
+        padx=24,
+    ).pack(side=LEFT, fill=Y)
 
-    for col in columns:
-        tree.heading(col, text=col.capitalize())
-        tree.column(col, anchor=CENTER)
+    Frame(historico_window, bg=theme.BORDER, height=1).pack(fill=X)
 
-    tree.pack(fill=BOTH, expand=True)
+    # ── Seção: tabela de registros ────────────────────────────
+    table_section = Frame(historico_window, bg=theme.BG_CARD, padx=16, pady=12)
+    table_section.pack(fill=X)
 
-    # Conectar ao banco via modulo database
+    Label(
+        table_section,
+        text="Registros",
+        font=theme.FONT_H3,
+        bg=theme.BG_CARD,
+        fg=theme.TEXT_SECONDARY,
+    ).pack(anchor=W, pady=(0, 8))
+
+    tree_frame = Frame(table_section, bg=theme.BG_CARD)
+    tree_frame.pack(fill=X)
+
+    columns = ("Data/Hora", "Peso (kg)", "Sistólica", "Diastólica", "Pulsação", "Temperatura (°C)")
+    tree = ttk.Treeview(
+        tree_frame,
+        columns=columns,
+        show="headings",
+        style="Custom.Treeview",
+        height=6,
+    )
+
+    vsb = ttk.Scrollbar(tree_frame, orient=VERTICAL, command=tree.yview,
+                        style="Custom.Vertical.TScrollbar")
+    hsb = ttk.Scrollbar(tree_frame, orient=HORIZONTAL, command=tree.xview,
+                        style="Custom.Horizontal.TScrollbar")
+    tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
+
+    vsb.pack(side=RIGHT, fill=Y)
+    hsb.pack(side=BOTTOM, fill=X)
+    tree.pack(fill=X, expand=False)
+
+    _col_widths = [165, 90, 100, 100, 90, 130]
+    for col, w in zip(columns, _col_widths):
+        tree.heading(col, text=col)
+        tree.column(col, width=w, anchor=CENTER)
+
+    tree.tag_configure("odd",  background=theme.ROW_ODD)
+    tree.tag_configure("even", background=theme.ROW_EVEN)
+
+    # ── Carga dos dados ───────────────────────────────────────
     try:
         medidas = database.obter_medidas_paciente(paciente_id)
     except Exception as e:
         messagebox.showerror("Erro", f"Erro ao recuperar histórico: {e}")
         medidas = []
 
-    # Preencher tabela
-    for medida in medidas:
-        tree.insert("", "end", values=medida)
+    for i, medida in enumerate(medidas):
+        tag = "odd" if i % 2 == 0 else "even"
+        tree.insert("", "end", values=medida, tags=(tag,))
 
-    # Preparar dados para os gráficos
-    datas = []
-    pesos = []
-    sistolica = []
-    diastolica = []
+    # ── Preparação dos dados para gráficos ────────────────────
+    datas, pesos, sistolica, diastolica = [], [], [], []
 
     for medida in medidas:
-        data_raw = medida[0]
-        peso = medida[1]
-        sist = medida[2]
-        diast = medida[3]
-
-        data_formatada = _parse_date(data_raw)
-        if data_formatada:
-            datas.append(data_formatada)
-            pesos.append(peso)
-            sistolica.append(sist)
-            diastolica.append(diast)
+        data_fmt = _parse_date(medida[0])
+        if data_fmt:
+            datas.append(data_fmt)
+            pesos.append(medida[1])
+            sistolica.append(medida[2])
+            diastolica.append(medida[3])
         else:
-            pass  # Data inválida: ignora o ponto sem expor dados ao console
+            pass  # Data inválida: ignorada sem expor dados ao console
 
-    # Função auxiliar para criar gráficos
-    def criar_grafico(titulo, dados_y, label_y):
-        frame_grafico = Frame(historico_window)
-        frame_grafico.pack(fill=BOTH, expand=False, padx=10, pady=10)
+    # ── Divisor e seção de gráficos ───────────────────────────
+    Frame(historico_window, bg=theme.BORDER, height=1).pack(fill=X)
 
-        fig = Figure(figsize=(10, 3), dpi=100)
-        figuras.append(fig) # Rastreia a figura para liberação posterior
-        
-        ax = fig.add_subplot(111)
-        ax.plot(datas, dados_y, marker='o', linestyle='-', color='blue')
-        ax.set_title(titulo)
-        ax.set_xlabel("Data")
-        ax.set_ylabel(label_y)
-        ax.grid(True)
+    charts_header = Frame(historico_window, bg=theme.BG_DARK, padx=16, pady=10)
+    charts_header.pack(fill=X)
+    Label(
+        charts_header,
+        text="Evolução das Métricas",
+        font=theme.FONT_H3,
+        bg=theme.BG_DARK,
+        fg=theme.TEXT_SECONDARY,
+    ).pack(anchor=W)
+
+    # Container com scroll vertical para os gráficos
+    scroll_outer = Frame(historico_window, bg=theme.BG_DARK)
+    scroll_outer.pack(fill=BOTH, expand=True)
+
+    canvas_scroll = Canvas(scroll_outer, bg=theme.BG_DARK, highlightthickness=0)
+    vsb_charts = ttk.Scrollbar(
+        scroll_outer, orient=VERTICAL,
+        command=canvas_scroll.yview,
+        style="Custom.Vertical.TScrollbar",
+    )
+    canvas_scroll.configure(yscrollcommand=vsb_charts.set)
+    vsb_charts.pack(side=RIGHT, fill=Y)
+    canvas_scroll.pack(side=LEFT, fill=BOTH, expand=True)
+
+    inner = Frame(canvas_scroll, bg=theme.BG_DARK)
+    inner_id = canvas_scroll.create_window((0, 0), window=inner, anchor="nw")
+
+    def _on_inner_configure(event):
+        canvas_scroll.configure(scrollregion=canvas_scroll.bbox("all"))
+
+    def _on_canvas_resize(event):
+        canvas_scroll.itemconfig(inner_id, width=event.width)
+
+    inner.bind("<Configure>", _on_inner_configure)
+    canvas_scroll.bind("<Configure>", _on_canvas_resize)
+
+    # ── Tema Matplotlib ───────────────────────────────────────
+    _BG     = theme.BG_CARD
+    _AXES   = theme.BG_INPUT
+    _TEXT   = theme.TEXT_SECONDARY
+    _GRID   = theme.BORDER
+    _COLORS = [theme.ACCENT, "#5B8DEF", "#F0A500"]
+
+    def criar_grafico(titulo: str, dados_y: list, label_y: str, color: str):
+        """Cria e empacota um gráfico estilizado no container de scroll."""
+        validos = [(d, v) for d, v in zip(datas, dados_y) if v is not None]
+        if not validos:
+            return
+
+        frame_g = Frame(
+            inner,
+            bg=_BG,
+            padx=12,
+            pady=12,
+            highlightthickness=1,
+            highlightbackground=theme.BORDER,
+        )
+        frame_g.pack(fill=X, padx=16, pady=(0, 16))
+
+        fig = Figure(figsize=(12, 3.4), dpi=96, facecolor=_BG)
+        figuras.append(fig)
+
+        ax = fig.add_subplot(111, facecolor=_AXES)
+
+        xs, ys = zip(*validos)
+        ax.plot(
+            xs, ys,
+            marker="o", markersize=5,
+            linewidth=2.0,
+            color=color,
+            markerfacecolor=color,
+            markeredgecolor=_BG,
+            markeredgewidth=1.5,
+        )
+        ax.fill_between(xs, ys, alpha=0.08, color=color)
+
+        ax.set_title(titulo, color=_TEXT, fontsize=11, fontweight="bold", pad=10)
+        ax.set_xlabel("Data", color=_TEXT, fontsize=9)
+        ax.set_ylabel(label_y, color=_TEXT, fontsize=9)
+        ax.tick_params(colors=_TEXT, labelsize=8)
+        ax.grid(True, color=_GRID, linewidth=0.5, alpha=0.6)
+        for spine in ax.spines.values():
+            spine.set_color(_GRID)
+
         fig.autofmt_xdate()
+        fig.tight_layout(pad=1.5)
 
-        canvas = FigureCanvasTkAgg(fig, master=frame_grafico)
+        canvas = FigureCanvasTkAgg(fig, master=frame_g)
         canvas.draw()
-        canvas.get_tk_widget().pack(fill=BOTH, expand=True)
+        canvas.get_tk_widget().pack(fill=X)
 
-    # Gerar gráficos
+    # ── Geração dos gráficos ──────────────────────────────────
     if datas:
-        if any(pesos):
-            criar_grafico("Evolução do Peso", pesos, "Peso (kg)")
-        if any(sistolica):
-            criar_grafico("Evolução da Pressão Sistólica", sistolica, "Sistólica (mmHg)")
-        if any(diastolica):
-            criar_grafico("Evolução da Pressão Diastólica", diastolica, "Diastólica (mmHg)")
+        criar_grafico("Evolução do Peso",           pesos,     "Peso (kg)",        _COLORS[0])
+        criar_grafico("Pressão Sistólica",          sistolica, "Sistólica (mmHg)", _COLORS[1])
+        criar_grafico("Pressão Diastólica",         diastolica,"Diastólica (mmHg)",_COLORS[2])
     else:
-        print("[INFO] Nenhum dado válido para gerar gráficos.")
+        Label(
+            inner,
+            text="Nenhum dado disponível para gerar gráficos.",
+            font=theme.FONT_BODY,
+            bg=theme.BG_DARK,
+            fg=theme.TEXT_SECONDARY,
+        ).pack(pady=40)
 
+    # ── Limpeza ao fechar ─────────────────────────────────────
     def on_close():
-        """Função chamada no fechamento da janela para liberar memória do Matplotlib."""
         for fig in figuras:
             try:
                 fig.clear()
@@ -116,5 +234,4 @@ def historico_paciente(paciente_id):
                 pass
         historico_window.destroy()
 
-    # Vincula o evento de fechar a janela ao método de limpeza
     historico_window.protocol("WM_DELETE_WINDOW", on_close)

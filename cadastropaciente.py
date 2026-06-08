@@ -5,227 +5,319 @@ import sqlite3
 from tkinter import *
 from tkinter import ttk, messagebox
 from datetime import datetime
+import theme
+
 
 class CadastroPacienteWindow:
+    """Janela de cadastro de pacientes com layout em dois painéis."""
+
     def __init__(self, master, callback_on_success=None):
         self.master = master
         self.callback_on_success = callback_on_success
-        
-        # Cria a janela Toplevel vinculada ao master
+
         self.window = Toplevel(master)
-        self.window.title("Sistema de Monitoramento de Pacientes")
-        self.window.geometry("800x500")
-        
-        # Frame superior (título)
-        self.frame_top = Frame(self.window, height=100, bg="#329542")
-        self.frame_top.pack(fill=X)
-        
-        Label(self.frame_top, text="Cadastro de Pacientes", font=("Arial", 18), bg="#329542", fg="white").pack(pady=20)
-        
-        # Frame principal (campos de entrada e tabela)
-        self.frame_main = Frame(self.window)
-        self.frame_main.pack(fill=BOTH, expand=True, padx=20, pady=10)
-        
-        # Frame para os campos de entrada
-        self.frame_inputs = Frame(self.frame_main)
-        self.frame_inputs.grid(row=0, column=0, sticky="nsew", pady=10)
-        
-        # Campos de entrada
-        Label(self.frame_inputs, text="Nome (Obrigatório):").grid(row=0, column=0, padx=5, pady=5, sticky=W)
-        self.nome_entry = Entry(self.frame_inputs, width=40)
-        self.nome_entry.grid(row=0, column=1, padx=5, pady=5)
-        
-        Label(self.frame_inputs, text="Data de Nascimento (DD/MM/AAAA):").grid(row=1, column=0, padx=5, pady=5, sticky=W)
-        self.nascimento_entry = Entry(self.frame_inputs, width=40)
-        self.nascimento_entry.grid(row=1, column=1, padx=5, pady=5)
-        
-        Label(self.frame_inputs, text="CPF:").grid(row=2, column=0, padx=5, pady=5, sticky=W)
-        self.cpf_entry = Entry(self.frame_inputs, width=40)
-        self.cpf_entry.grid(row=2, column=1, padx=5, pady=5)
-        
-        Label(self.frame_inputs, text="Cartão SUS:").grid(row=3, column=0, padx=5, pady=5, sticky=W)
-        self.sus_entry = Entry(self.frame_inputs, width=40)
-        self.sus_entry.grid(row=3, column=1, padx=5, pady=5)
-        
-        Label(self.frame_inputs, text="Telefone:").grid(row=4, column=0, padx=5, pady=5, sticky=W)
-        self.telefone_entry = Entry(self.frame_inputs, width=40)
-        self.telefone_entry.grid(row=4, column=1, padx=5, pady=5)
-        
-        Label(self.frame_inputs, text="E-mail:").grid(row=5, column=0, padx=5, pady=5, sticky=W)
-        self.email_entry = Entry(self.frame_inputs, width=40)
-        self.email_entry.grid(row=5, column=1, padx=5, pady=5)
-        
-        # Vincular eventos de digitação em tempo real para as máscaras
-        self.nascimento_entry.bind("<KeyRelease>", self.formatar_data)
-        self.cpf_entry.bind("<KeyRelease>", self.formatar_cpf)
-        
-        Button(self.frame_inputs, text="Cadastrar", command=self.cadastrar_paciente, bg="#329542", fg="white").grid(row=6, columnspan=2, pady=10)
-        
-        # Frame para a tabela
-        self.frame_tabela = Frame(self.frame_main)
-        self.frame_tabela.grid(row=1, column=0, sticky="nsew", pady=10)
-        
-        # Adicionando barras de rolagem
-        self.scrollbar_y = Scrollbar(self.frame_tabela, orient=VERTICAL)
-        self.scrollbar_x = Scrollbar(self.frame_tabela, orient=HORIZONTAL)
-        
-        # Tabela de pacientes
-        self.columns = ("ID", "Nome", "Cartão SUS")
-        self.tree = ttk.Treeview(self.frame_tabela, columns=self.columns, show="headings", yscrollcommand=self.scrollbar_y.set, xscrollcommand=self.scrollbar_x.set)
-        self.tree.grid(row=0, column=0, sticky="nsew")
-        
-        self.scrollbar_y.config(command=self.tree.yview)
-        self.scrollbar_x.config(command=self.tree.xview)
-        
-        self.scrollbar_y.grid(row=0, column=1, sticky="ns")
-        self.scrollbar_x.grid(row=1, column=0, sticky="ew")
-        
-        # Configurando as colunas da tabela
-        for col in self.columns:
-            self.tree.heading(col, text=col)
-            self.tree.column(col, width=150, anchor=CENTER)
-        
-        # Configurando o grid para expandir a tabela
-        self.frame_main.grid_rowconfigure(1, weight=1)
-        self.frame_main.grid_columnconfigure(0, weight=1)
-        
+        self.window.title("Cadastro de Pacientes")
+        self.window.geometry("1040x620")
+        self.window.minsize(820, 520)
+        self.window.configure(bg=theme.BG_DARK)
+        theme.apply_theme(self.window)
+
+        self._build_layout()
         self.listar_pacientes()
 
+    # ──────────────────────────────────────────────────────────
+    #  Layout
+    # ──────────────────────────────────────────────────────────
+    def _build_layout(self):
+        # Painel esquerdo — formulário (largura fixa)
+        self.panel_form = Frame(self.window, bg=theme.BG_CARD, width=400)
+        self.panel_form.pack(side=LEFT, fill=Y)
+        self.panel_form.pack_propagate(False)
+
+        # Divisor vertical
+        Frame(self.window, bg=theme.BORDER, width=1).pack(side=LEFT, fill=Y)
+
+        # Painel direito — tabela de pacientes
+        self.panel_table = Frame(self.window, bg=theme.BG_DARK)
+        self.panel_table.pack(side=LEFT, fill=BOTH, expand=True)
+
+        self._build_form()
+        self._build_table()
+
+    def _build_form(self):
+        p = self.panel_form
+
+        # ── Cabeçalho colorido ────────────────────────────────
+        header = Frame(p, bg=theme.ACCENT, height=64)
+        header.pack(fill=X)
+        header.pack_propagate(False)
+        Label(
+            header,
+            text="Novo Paciente",
+            font=theme.FONT_H2,
+            bg=theme.ACCENT,
+            fg="#0F1923",
+        ).pack(expand=True)
+
+        # ── Corpo do formulário ───────────────────────────────
+        body = Frame(p, bg=theme.BG_CARD, padx=24, pady=8)
+        body.pack(fill=BOTH, expand=True)
+        body.grid_columnconfigure(0, weight=1)
+
+        def _entry_row(label_text: str, row: int, required: bool = False) -> Entry:
+            suffix = "  *" if required else ""
+            Label(
+                body,
+                text=f"{label_text}{suffix}",
+                font=theme.FONT_LABEL,
+                bg=theme.BG_CARD,
+                fg=theme.TEXT_SECONDARY,
+                anchor=W,
+            ).grid(row=row * 2, column=0, sticky=W, pady=(10, 2))
+
+            e = Entry(
+                body,
+                font=theme.FONT_BODY,
+                bg=theme.BG_INPUT,
+                fg=theme.TEXT_PRIMARY,
+                insertbackground=theme.ACCENT,
+                relief="flat",
+                bd=0,
+                highlightthickness=1,
+                highlightbackground=theme.BORDER,
+                highlightcolor=theme.ACCENT,
+            )
+            e.grid(row=row * 2 + 1, column=0, sticky=EW, ipady=7)
+            return e
+
+        self.nome_entry       = _entry_row("Nome completo", 0, required=True)
+        self.nascimento_entry = _entry_row("Data de Nascimento (DD/MM/AAAA)", 1, required=True)
+        self.cpf_entry        = _entry_row("CPF", 2)
+        self.sus_entry        = _entry_row("Cartão SUS", 3)
+        self.telefone_entry   = _entry_row("Telefone", 4)
+        self.email_entry      = _entry_row("E-mail", 5)
+
+        # Máscaras de formatação automática
+        self.nascimento_entry.bind("<KeyRelease>", self.formatar_data)
+        self.cpf_entry.bind("<KeyRelease>", self.formatar_cpf)
+
+        # ── Rodapé com botões ─────────────────────────────────
+        Frame(p, bg=theme.BORDER, height=1).pack(fill=X, side=BOTTOM)
+        footer = Frame(p, bg=theme.BG_CARD, padx=24, pady=16)
+        footer.pack(fill=X, side=BOTTOM)
+
+        Label(
+            footer,
+            text="* Campos obrigatórios",
+            font=theme.FONT_SMALL,
+            bg=theme.BG_CARD,
+            fg=theme.TEXT_SECONDARY,
+        ).pack(anchor=W, pady=(0, 10))
+
+        btn_row = Frame(footer, bg=theme.BG_CARD)
+        btn_row.pack(fill=X)
+
+        theme.HoverButton(
+            btn_row,
+            text="Cadastrar",
+            style="primary",
+            font=(theme.FONT_FAMILY, 11, "bold"),
+            command=self.cadastrar_paciente,
+        ).pack(side=LEFT, padx=(0, 10))
+
+        theme.HoverButton(
+            btn_row,
+            text="Limpar",
+            style="secondary",
+            font=(theme.FONT_FAMILY, 11),
+            command=self._limpar_campos,
+        ).pack(side=LEFT)
+
+    def _build_table(self):
+        p = self.panel_table
+
+        # ── Cabeçalho ─────────────────────────────────────────
+        header = Frame(p, bg=theme.BG_CARD, height=64)
+        header.pack(fill=X)
+        header.pack_propagate(False)
+        Frame(p, bg=theme.BORDER, height=1).pack(fill=X)
+
+        Label(
+            header,
+            text="Pacientes Cadastrados",
+            font=theme.FONT_H2,
+            bg=theme.BG_CARD,
+            fg=theme.TEXT_PRIMARY,
+            padx=20,
+        ).pack(side=LEFT, fill=Y)
+
+        # ── Treeview ──────────────────────────────────────────
+        tree_frame = Frame(p, bg=theme.BG_DARK, padx=12, pady=12)
+        tree_frame.pack(fill=BOTH, expand=True)
+
+        cols = ("ID", "Nome", "Cartão SUS")
+        self.tree = ttk.Treeview(
+            tree_frame,
+            columns=cols,
+            show="headings",
+            style="Custom.Treeview",
+        )
+        vsb = ttk.Scrollbar(
+            tree_frame,
+            orient=VERTICAL,
+            command=self.tree.yview,
+            style="Custom.Vertical.TScrollbar",
+        )
+        self.tree.configure(yscrollcommand=vsb.set)
+        vsb.pack(side=RIGHT, fill=Y)
+        self.tree.pack(fill=BOTH, expand=True)
+
+        _col_cfg = {"ID": (60, CENTER), "Nome": (260, W), "Cartão SUS": (160, CENTER)}
+        for col in cols:
+            w, anchor = _col_cfg[col]
+            self.tree.heading(col, text=col)
+            self.tree.column(col, width=w, anchor=anchor)
+
+        self.tree.tag_configure("odd",  background=theme.ROW_ODD)
+        self.tree.tag_configure("even", background=theme.ROW_EVEN)
+
+    # ──────────────────────────────────────────────────────────
+    #  Máscaras de entrada
+    # ──────────────────────────────────────────────────────────
     def formatar_data(self, event):
-        # Ignora teclas de navegação/controle
         if event.keysym in ("BackSpace", "Delete", "Left", "Right", "Tab", "Shift_L", "Shift_R"):
             return
-        text = self.nascimento_entry.get()
-        digits = "".join([c for c in text if c.isdigit()])[:8]
-        
-        formatted = ""
+        digits = "".join(c for c in self.nascimento_entry.get() if c.isdigit())[:8]
+        fmt = ""
         for i, d in enumerate(digits):
-            if i == 2 or i == 4:
-                formatted += "/"
-            formatted += d
-            
+            if i in (2, 4):
+                fmt += "/"
+            fmt += d
         self.nascimento_entry.delete(0, END)
-        self.nascimento_entry.insert(0, formatted)
+        self.nascimento_entry.insert(0, fmt)
 
     def formatar_cpf(self, event):
-        # Ignora teclas de navegação/controle
         if event.keysym in ("BackSpace", "Delete", "Left", "Right", "Tab", "Shift_L", "Shift_R"):
             return
-        text = self.cpf_entry.get()
-        digits = "".join([c for c in text if c.isdigit()])[:11]
-        
-        formatted = ""
+        digits = "".join(c for c in self.cpf_entry.get() if c.isdigit())[:11]
+        fmt = ""
         for i, d in enumerate(digits):
-            if i == 3 or i == 6:
-                formatted += "."
+            if i in (3, 6):
+                fmt += "."
             elif i == 9:
-                formatted += "-"
-            formatted += d
-            
+                fmt += "-"
+            fmt += d
         self.cpf_entry.delete(0, END)
-        self.cpf_entry.insert(0, formatted)
+        self.cpf_entry.insert(0, fmt)
 
-    def validar_cpf(self, cpf_str):
-        # Remove pontos e traços
-        cpf = "".join([c for c in cpf_str if c.isdigit()])
-        if len(cpf) != 11:
+    # ──────────────────────────────────────────────────────────
+    #  Validação
+    # ──────────────────────────────────────────────────────────
+    def validar_cpf(self, cpf_str: str) -> bool:
+        """Valida o CPF usando o algoritmo oficial de dígitos verificadores."""
+        cpf = "".join(c for c in cpf_str if c.isdigit())
+        if len(cpf) != 11 or cpf == cpf[0] * 11:
             return False
-        # CPFs com todos os dígitos iguais são inválidos
-        if cpf == cpf[0] * 11:
-            return False
-        # Calcula primeiro dígito verificador
         soma = sum(int(cpf[i]) * (10 - i) for i in range(9))
-        resto = (soma * 10) % 11
-        if resto == 10:
-            resto = 0
-        if resto != int(cpf[9]):
+        r1 = (soma * 10) % 11
+        if r1 == 10:
+            r1 = 0
+        if r1 != int(cpf[9]):
             return False
-        # Calcula segundo dígito verificador
         soma = sum(int(cpf[i]) * (11 - i) for i in range(10))
-        resto = (soma * 10) % 11
-        if resto == 10:
-            resto = 0
-        if resto != int(cpf[10]):
-            return False
-        return True
+        r2 = (soma * 10) % 11
+        if r2 == 10:
+            r2 = 0
+        return r2 == int(cpf[10])
+
+    # ──────────────────────────────────────────────────────────
+    #  Ações
+    # ──────────────────────────────────────────────────────────
+    def _limpar_campos(self):
+        for e in (
+            self.nome_entry, self.nascimento_entry, self.cpf_entry,
+            self.sus_entry, self.telefone_entry, self.email_entry,
+        ):
+            e.delete(0, END)
 
     def cadastrar_paciente(self):
-        nome = self.nome_entry.get().strip()
-        data_nascimento = self.nascimento_entry.get().strip()
-        cpf = self.cpf_entry.get().strip()
-        cartao_sus = self.sus_entry.get().strip()
-        telefone = self.telefone_entry.get().strip()
-        email = self.email_entry.get().strip()
-        
-        # Apenas o Nome é obrigatório agora
-        if nome == "":
-            messagebox.showerror("Erro de Validação", "O campo Nome é obrigatório!")
-            return
-        
-        # Validação semântica de Data de Nascimento (Formato DD/MM/AAAA)
-        if data_nascimento:
-            try:
-                dt = datetime.strptime(data_nascimento, "%d/%m/%Y")
-                ano_atual = datetime.now().year
-                if dt.year < 1900 or dt.year > ano_atual:
-                    raise ValueError()
-            except ValueError:
-                messagebox.showerror("Erro de Validação", "Data de Nascimento inválida! Use o formato DD/MM/AAAA com valores reais entre 1900 e o ano atual.")
-                return
-        else:
-            messagebox.showerror("Erro de Validação", "O campo Data de Nascimento é obrigatório!")
+        nome           = self.nome_entry.get().strip()
+        data_nasc      = self.nascimento_entry.get().strip()
+        cpf            = self.cpf_entry.get().strip()
+        cartao_sus     = self.sus_entry.get().strip()
+        telefone       = self.telefone_entry.get().strip()
+        email          = self.email_entry.get().strip()
+
+        # ── Validações ────────────────────────────────────────
+        if not nome:
+            messagebox.showerror("Validação", "O campo Nome é obrigatório!", parent=self.window)
+            self.nome_entry.focus()
             return
 
-        # Validação de CPF se preenchido
-        if cpf:
-            if not self.validar_cpf(cpf):
-                messagebox.showerror("Erro de Validação", "O CPF informado é inválido!")
-                return
-                
-        # Validação de E-mail se preenchido
-        if email:
-            if not re.match(r"^[^@]+@[^@]+\.[^@]+$", email):
-                messagebox.showerror("Erro de Validação", "O E-mail informado possui formato inválido!")
-                return
-        
+        if not data_nasc:
+            messagebox.showerror("Validação", "O campo Data de Nascimento é obrigatório!", parent=self.window)
+            return
+
         try:
-            # Cadastra o paciente (o módulo database já converte strings vazias em None)
-            database.cadastrar_paciente(nome, data_nascimento, cpf, cartao_sus, telefone, email)
-            messagebox.showinfo("Sucesso", "Paciente cadastrado com sucesso!")
-            self.listar_pacientes()
-            
-            # Limpa os campos após o cadastro
-            self.nome_entry.delete(0, END)
-            self.nascimento_entry.delete(0, END)
-            self.cpf_entry.delete(0, END)
-            self.sus_entry.delete(0, END)
-            self.telefone_entry.delete(0, END)
-            self.email_entry.delete(0, END)
+            dt = datetime.strptime(data_nasc, "%d/%m/%Y")
+            if dt.year < 1900 or dt.year > datetime.now().year:
+                raise ValueError()
+        except ValueError:
+            messagebox.showerror(
+                "Validação",
+                "Data de Nascimento inválida! Use DD/MM/AAAA com valores reais entre 1900 e o ano atual.",
+                parent=self.window,
+            )
+            return
 
+        if cpf and not self.validar_cpf(cpf):
+            messagebox.showerror("Validação", "O CPF informado é inválido!", parent=self.window)
+            return
+
+        if email and not re.match(r"^[^@]+@[^@]+\.[^@]+$", email):
+            messagebox.showerror("Validação", "O formato do E-mail é inválido!", parent=self.window)
+            return
+
+        # ── Persistência ──────────────────────────────────────
+        try:
+            database.cadastrar_paciente(nome, data_nasc, cpf, cartao_sus, telefone, email)
+            messagebox.showinfo("Sucesso", "Paciente cadastrado com sucesso!", parent=self.window)
+            self.listar_pacientes()
+            self._limpar_campos()
             if self.callback_on_success:
                 self.callback_on_success()
         except sqlite3.IntegrityError:
-            # Não exibe detalhes da constraint (ex.: nome da coluna) para o usuário.
-            messagebox.showerror("Erro de Validação", "Já existe um paciente cadastrado com esse CPF ou Cartão SUS.")
+            messagebox.showerror(
+                "Validação",
+                "Já existe um paciente cadastrado com esse CPF ou Cartão SUS.",
+                parent=self.window,
+            )
         except Exception:
-            messagebox.showerror("Erro", "Ocorreu um erro inesperado ao cadastrar o paciente. Tente novamente.")
+            messagebox.showerror(
+                "Erro",
+                "Ocorreu um erro inesperado ao cadastrar o paciente. Tente novamente.",
+                parent=self.window,
+            )
 
     def listar_pacientes(self):
         for item in self.tree.get_children():
             self.tree.delete(item)
-        
         try:
             pacientes = database.listar_pacientes()
-            for paciente in pacientes:
-                # Exibe "N/A" na tabela para o Cartão SUS caso seja None ou vazio
-                sus_display = paciente[2] if paciente[2] else "N/A"
-                self.tree.insert("", "end", values=(paciente[0], paciente[1], sus_display))
+            for i, pac in enumerate(pacientes):
+                sus = pac[2] if pac[2] else "—"
+                tag = "odd" if i % 2 == 0 else "even"
+                self.tree.insert("", "end", values=(pac[0], pac[1], sus), tags=(tag,))
         except Exception as e:
-            messagebox.showerror("Erro", f"Erro ao listar pacientes: {e}")
+            messagebox.showerror("Erro", f"Erro ao listar pacientes: {e}", parent=self.window)
 
+
+# ──────────────────────────────────────────────────────────────
+#  Execução standalone
+# ──────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     root = Tk()
-    root.withdraw() # Oculta a janela root padrão para usar Toplevel
+    root.withdraw()
     app = CadastroPacienteWindow(root)
     app.window.protocol("WM_DELETE_WINDOW", lambda: (root.destroy(), sys.exit()))
     root.mainloop()
