@@ -1,7 +1,9 @@
 import database
 import sys
+import re
 from tkinter import *
 from tkinter import ttk, messagebox
+from datetime import datetime
 
 class CadastroPacienteWindow:
     def __init__(self, master, callback_on_success=None):
@@ -28,11 +30,11 @@ class CadastroPacienteWindow:
         self.frame_inputs.grid(row=0, column=0, sticky="nsew", pady=10)
         
         # Campos de entrada
-        Label(self.frame_inputs, text="Nome:").grid(row=0, column=0, padx=5, pady=5, sticky=W)
+        Label(self.frame_inputs, text="Nome (Obrigatório):").grid(row=0, column=0, padx=5, pady=5, sticky=W)
         self.nome_entry = Entry(self.frame_inputs, width=40)
         self.nome_entry.grid(row=0, column=1, padx=5, pady=5)
         
-        Label(self.frame_inputs, text="Data de Nascimento:").grid(row=1, column=0, padx=5, pady=5, sticky=W)
+        Label(self.frame_inputs, text="Data de Nascimento (DD/MM/AAAA):").grid(row=1, column=0, padx=5, pady=5, sticky=W)
         self.nascimento_entry = Entry(self.frame_inputs, width=40)
         self.nascimento_entry.grid(row=1, column=1, padx=5, pady=5)
         
@@ -51,6 +53,10 @@ class CadastroPacienteWindow:
         Label(self.frame_inputs, text="E-mail:").grid(row=5, column=0, padx=5, pady=5, sticky=W)
         self.email_entry = Entry(self.frame_inputs, width=40)
         self.email_entry.grid(row=5, column=1, padx=5, pady=5)
+        
+        # Vincular eventos de digitação em tempo real para as máscaras
+        self.nascimento_entry.bind("<KeyRelease>", self.formatar_data)
+        self.cpf_entry.bind("<KeyRelease>", self.formatar_cpf)
         
         Button(self.frame_inputs, text="Cadastrar", command=self.cadastrar_paciente, bg="#329542", fg="white").grid(row=6, columnspan=2, pady=10)
         
@@ -84,19 +90,105 @@ class CadastroPacienteWindow:
         
         self.listar_pacientes()
 
-    def cadastrar_paciente(self):
-        nome = self.nome_entry.get()
-        data_nascimento = self.nascimento_entry.get()
-        cpf = self.cpf_entry.get()
-        cartao_sus = self.sus_entry.get()
-        telefone = self.telefone_entry.get()
-        email = self.email_entry.get()
+    def formatar_data(self, event):
+        # Ignora teclas de navegação/controle
+        if event.keysym in ("BackSpace", "Delete", "Left", "Right", "Tab", "Shift_L", "Shift_R"):
+            return
+        text = self.nascimento_entry.get()
+        digits = "".join([c for c in text if c.isdigit()])[:8]
         
-        if nome == "" or cartao_sus == "":
-            messagebox.showerror("Erro", "Nome e Cartão do SUS são obrigatórios!")
+        formatted = ""
+        for i, d in enumerate(digits):
+            if i == 2 or i == 4:
+                formatted += "/"
+            formatted += d
+            
+        self.nascimento_entry.delete(0, END)
+        self.nascimento_entry.insert(0, formatted)
+
+    def formatar_cpf(self, event):
+        # Ignora teclas de navegação/controle
+        if event.keysym in ("BackSpace", "Delete", "Left", "Right", "Tab", "Shift_L", "Shift_R"):
+            return
+        text = self.cpf_entry.get()
+        digits = "".join([c for c in text if c.isdigit()])[:11]
+        
+        formatted = ""
+        for i, d in enumerate(digits):
+            if i == 3 or i == 6:
+                formatted += "."
+            elif i == 9:
+                formatted += "-"
+            formatted += d
+            
+        self.cpf_entry.delete(0, END)
+        self.cpf_entry.insert(0, formatted)
+
+    def validar_cpf(self, cpf_str):
+        # Remove pontos e traços
+        cpf = "".join([c for c in cpf_str if c.isdigit()])
+        if len(cpf) != 11:
+            return False
+        # CPFs com todos os dígitos iguais são inválidos
+        if cpf == cpf[0] * 11:
+            return False
+        # Calcula primeiro dígito verificador
+        soma = sum(int(cpf[i]) * (10 - i) for i in range(9))
+        resto = (soma * 10) % 11
+        if resto == 10:
+            resto = 0
+        if resto != int(cpf[9]):
+            return False
+        # Calcula segundo dígito verificador
+        soma = sum(int(cpf[i]) * (11 - i) for i in range(10))
+        resto = (soma * 10) % 11
+        if resto == 10:
+            resto = 0
+        if resto != int(cpf[10]):
+            return False
+        return True
+
+    def cadastrar_paciente(self):
+        nome = self.nome_entry.get().strip()
+        data_nascimento = self.nascimento_entry.get().strip()
+        cpf = self.cpf_entry.get().strip()
+        cartao_sus = self.sus_entry.get().strip()
+        telefone = self.telefone_entry.get().strip()
+        email = self.email_entry.get().strip()
+        
+        # Apenas o Nome é obrigatório agora
+        if nome == "":
+            messagebox.showerror("Erro de Validação", "O campo Nome é obrigatório!")
             return
         
+        # Validação semântica de Data de Nascimento (Formato DD/MM/AAAA)
+        if data_nascimento:
+            try:
+                dt = datetime.strptime(data_nascimento, "%d/%m/%Y")
+                ano_atual = datetime.now().year
+                if dt.year < 1900 or dt.year > ano_atual:
+                    raise ValueError()
+            except ValueError:
+                messagebox.showerror("Erro de Validação", "Data de Nascimento inválida! Use o formato DD/MM/AAAA com valores reais entre 1900 e o ano atual.")
+                return
+        else:
+            messagebox.showerror("Erro de Validação", "O campo Data de Nascimento é obrigatório!")
+            return
+
+        # Validação de CPF se preenchido
+        if cpf:
+            if not self.validar_cpf(cpf):
+                messagebox.showerror("Erro de Validação", "O CPF informado é inválido!")
+                return
+                
+        # Validação de E-mail se preenchido
+        if email:
+            if not re.match(r"^[^@]+@[^@]+\.[^@]+$", email):
+                messagebox.showerror("Erro de Validação", "O E-mail informado possui formato inválido!")
+                return
+        
         try:
+            # Cadastra o paciente (o módulo database já converte strings vazias em None)
             database.cadastrar_paciente(nome, data_nascimento, cpf, cartao_sus, telefone, email)
             messagebox.showinfo("Sucesso", "Paciente cadastrado com sucesso!")
             self.listar_pacientes()
@@ -121,7 +213,9 @@ class CadastroPacienteWindow:
         try:
             pacientes = database.listar_pacientes()
             for paciente in pacientes:
-                self.tree.insert("", "end", values=paciente)
+                # Exibe "N/A" na tabela para o Cartão SUS caso seja None ou vazio
+                sus_display = paciente[2] if paciente[2] else "N/A"
+                self.tree.insert("", "end", values=(paciente[0], paciente[1], sus_display))
         except Exception as e:
             messagebox.showerror("Erro", f"Erro ao listar pacientes: {e}")
 
@@ -129,6 +223,5 @@ if __name__ == "__main__":
     root = Tk()
     root.withdraw() # Oculta a janela root padrão para usar Toplevel
     app = CadastroPacienteWindow(root)
-    # Fecha o app inteiro quando a janela for fechada no modo standalone
     app.window.protocol("WM_DELETE_WINDOW", lambda: (root.destroy(), sys.exit()))
     root.mainloop()

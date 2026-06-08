@@ -7,20 +7,60 @@ def obter_conexao():
     return sqlite3.connect(DB_NAME)
 
 def inicializar_banco():
-    """Cria as tabelas paciente, endereco e medida caso não existam."""
+    """Cria as tabelas paciente, endereco e medida caso não existam e realiza migrações se necessário."""
     conn = obter_conexao()
     cursor = conn.cursor()
 
+    # Cria a tabela paciente com cartao_sus opcional por padrão (para novos bancos)
     cursor.execute('''CREATE TABLE IF NOT EXISTS paciente (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         nome TEXT NOT NULL,
         data_nascimento DATE NOT NULL,
         cpf TEXT UNIQUE,
-        cartao_sus TEXT UNIQUE NOT NULL,
+        cartao_sus TEXT UNIQUE,
         telefone TEXT,
         email TEXT
     )''')
+
+    # Migração em background para banco existente que tenha cartao_sus como NOT NULL
+    cursor.execute("PRAGMA table_info(paciente)")
+    colunas = cursor.fetchall()
     
+    cartao_sus_not_null = False
+    for col in colunas:
+        if col[1] == "cartao_sus" and col[3] == 1:
+            cartao_sus_not_null = True
+            break
+
+    if cartao_sus_not_null:
+        print("[DATABASE] Executando migração: tornando campo 'cartao_sus' opcional (permitindo NULL)...")
+        try:
+            cursor.execute("PRAGMA foreign_keys = OFF")
+            
+            cursor.execute('''CREATE TABLE paciente_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                nome TEXT NOT NULL,
+                data_nascimento DATE NOT NULL,
+                cpf TEXT UNIQUE,
+                cartao_sus TEXT UNIQUE,
+                telefone TEXT,
+                email TEXT
+            )''')
+            
+            cursor.execute('''INSERT INTO paciente_new (id, nome, data_nascimento, cpf, cartao_sus, telefone, email)
+                              SELECT id, nome, data_nascimento, cpf, cartao_sus, telefone, email FROM paciente''')
+            
+            cursor.execute("DROP TABLE paciente")
+            cursor.execute("ALTER TABLE paciente_new RENAME TO paciente")
+            
+            conn.commit()
+            print("[DATABASE] Migração concluída com sucesso.")
+        except Exception as e:
+            conn.rollback()
+            print(f"[DATABASE] Falha na migração: {e}")
+        finally:
+            cursor.execute("PRAGMA foreign_keys = ON")
+
     cursor.execute('''CREATE TABLE IF NOT EXISTS endereco (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         paciente_id INTEGER UNIQUE NOT NULL,
@@ -59,11 +99,19 @@ def listar_pacientes():
     return pacientes
 
 def cadastrar_paciente(nome, data_nascimento, cpf, cartao_sus, telefone, email):
-    """Insere um novo paciente no banco de dados."""
+    """Insere um novo paciente no banco de dados, tratando campos opcionais vazios como None (NULL)."""
+    sus_val = cartao_sus.strip() if cartao_sus else None
+    if not sus_val:
+        sus_val = None
+        
+    cpf_val = cpf.strip() if cpf else None
+    if not cpf_val:
+        cpf_val = None
+
     conn = obter_conexao()
     cursor = conn.cursor()
     cursor.execute("""INSERT INTO paciente (nome, data_nascimento, cpf, cartao_sus, telefone, email) 
-                      VALUES (?, ?, ?, ?, ?, ?)""", (nome, data_nascimento, cpf, cartao_sus, telefone, email))
+                      VALUES (?, ?, ?, ?, ?, ?)""", (nome, data_nascimento, cpf_val, sus_val, telefone, email))
     conn.commit()
     conn.close()
 
