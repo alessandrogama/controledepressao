@@ -1,15 +1,35 @@
-import sqlite3
 from tkinter import *
 from tkinter import ttk, messagebox
 from datetime import datetime
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+import database
+
+def _parse_date(date_str):
+    """Função otimizada para realizar o parsing de strings de data para datetime."""
+    if not date_str:
+        return None
+    date_str = date_str.strip()
+    try:
+        # Tenta fatiar os milissegundos se existirem para acelerar o strptime padrão
+        if "." in date_str:
+            return datetime.strptime(date_str.split(".")[0], "%Y-%m-%d %H:%M:%S")
+        return datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        # Fallback rápido usando fromisoformat
+        try:
+            return datetime.fromisoformat(date_str)
+        except Exception:
+            return None
 
 def historico_paciente(paciente_id):
     """Exibe o histórico de medidas de um paciente específico."""
     historico_window = Toplevel()
     historico_window.title("Histórico de Paciente")
     historico_window.geometry("1208x800")
+
+    # Lista para rastrear figuras do Matplotlib criadas
+    figuras = []
 
     # Frame da Tabela
     frame_table = Frame(historico_window)
@@ -24,16 +44,12 @@ def historico_paciente(paciente_id):
 
     tree.pack(fill=BOTH, expand=True)
 
-    # Conectar ao banco
-    conn = sqlite3.connect("medidor.sqlite")
-    cursor = conn.cursor()
-    cursor.execute("""
-        SELECT data_hora, peso, sistolica, diastolica, pulsacao, temperatura
-        FROM medida
-        WHERE paciente_id=?
-    """, (paciente_id,))
-    medidas = cursor.fetchall()
-    conn.close()
+    # Conectar ao banco via modulo database
+    try:
+        medidas = database.obter_medidas_paciente(paciente_id)
+    except Exception as e:
+        messagebox.showerror("Erro", f"Erro ao recuperar histórico: {e}")
+        medidas = []
 
     # Preencher tabela
     for medida in medidas:
@@ -51,19 +67,15 @@ def historico_paciente(paciente_id):
         sist = medida[2]
         diast = medida[3]
 
-        try:
+        data_formatada = _parse_date(data_raw)
+        if data_formatada:
+            datas.append(data_formatada)
+            pesos.append(peso)
+            sistolica.append(sist)
+            diastolica.append(diast)
+        else:
             if data_raw:
-                try:
-                    data_formatada = datetime.strptime(data_raw.strip(), "%Y-%m-%d %H:%M:%S.%f")
-                except ValueError:
-                    data_formatada = datetime.strptime(data_raw.strip(), "%Y-%m-%d %H:%M:%S")
-
-                datas.append(data_formatada)
-                pesos.append(peso)
-                sistolica.append(sist)
-                diastolica.append(diast)
-        except Exception as e:
-            print(f"[ERRO] Conversão de data falhou para '{data_raw}': {e}")
+                print(f"[ERRO] Conversão de data falhou para '{data_raw}'")
 
     # Função auxiliar para criar gráficos
     def criar_grafico(titulo, dados_y, label_y):
@@ -71,6 +83,8 @@ def historico_paciente(paciente_id):
         frame_grafico.pack(fill=BOTH, expand=False, padx=10, pady=10)
 
         fig = Figure(figsize=(10, 3), dpi=100)
+        figuras.append(fig) # Rastreia a figura para liberação posterior
+        
         ax = fig.add_subplot(111)
         ax.plot(datas, dados_y, marker='o', linestyle='-', color='blue')
         ax.set_title(titulo)
@@ -93,3 +107,15 @@ def historico_paciente(paciente_id):
             criar_grafico("Evolução da Pressão Diastólica", diastolica, "Diastólica (mmHg)")
     else:
         print("[INFO] Nenhum dado válido para gerar gráficos.")
+
+    def on_close():
+        """Função chamada no fechamento da janela para liberar memória do Matplotlib."""
+        for fig in figuras:
+            try:
+                fig.clear()
+            except Exception:
+                pass
+        historico_window.destroy()
+
+    # Vincula o evento de fechar a janela ao método de limpeza
+    historico_window.protocol("WM_DELETE_WINDOW", on_close)
