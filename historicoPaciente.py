@@ -74,8 +74,7 @@ def historico_paciente(paciente_id):
             sistolica.append(sist)
             diastolica.append(diast)
         else:
-            if data_raw:
-                print(f"[ERRO] Conversão de data falhou para '{data_raw}'")
+            pass  # Data inválida: ignora o ponto sem expor dados ao console
 
     # Função auxiliar para criar gráficos
     def criar_grafico(titulo, dados_y, label_y):

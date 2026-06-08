@@ -7,11 +7,14 @@ from PIL import Image, ImageTk
 from datetime import datetime
 import database
 
+# Caminho absoluto resolvido no momento do import para evitar ambiguidade quando
+# o módulo é importado a partir de outro diretório de trabalho.
+_LOG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "medidor_error_log.txt")
+
 def log_error(message):
-    """Função auxiliar para logar erros em um arquivo."""
+    """Função auxiliar para logar erros em um arquivo. Nunca exibe detalhes internos ao usuário."""
     try:
-        log_file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "medidor_error_log.txt")
-        with open(log_file_path, "a") as f:
+        with open(_LOG_PATH, "a", encoding="utf-8") as f:
             f.write(f"\n--- ERRO [{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] ---\n")
             f.write(message)
             f.write("\n" + "="*80 + "\n")
@@ -116,44 +119,44 @@ class RegistroMedidasWindow:
         peso = self.peso_entry.get()
         observacao = self.observacao_entry.get("1.0", END).strip()
         
-        # Validação de campos
+        # Validação de campos obrigatórios
         if not pressao_sistolica or not pressao_diastolica or not batimentos or not temperatura:
             messagebox.showerror("Erro", "Campos de Pressão, Batimentos e Temperatura são obrigatórios.")
             return
 
         try:
-            pressao_sistolica_val = float(pressao_sistolica)
-            pressao_diastolica_val = float(pressao_diastolica)
-            batimentos_val = int(batimentos)
-            temperatura_val = float(temperatura)
-            peso_val = float(peso) if peso else None 
-            sistolica = None
-            diastolica = None
-            if '/' in pressao_sistolica:
-                try:
-                    sistolica, diastolica = map(int, pressao_sistolica.split('/'))
-                except ValueError:
-                    messagebox.showerror("Erro", "Formato de Pressão Arterial inválido. Use 'XXX/YYY'.")
-                    return
-            else: 
-                sistolica = int(pressao_sistolica_val)
-                diastolica = int(pressao_diastolica_val)
+            # Pressão: aceita apenas inteiros positivos em cada campo separado
+            sistolica = int(pressao_sistolica)
+            diastolica = int(pressao_diastolica)
+            if sistolica <= 0 or diastolica <= 0:
+                raise ValueError("Pressão deve ser um número positivo.")
 
-            database.registrar_medida(self.paciente_id, datetime.now(), peso_val, sistolica, diastolica, batimentos_val, temperatura_val)
+            batimentos_val = int(batimentos)
+            if batimentos_val <= 0:
+                raise ValueError("Batimentos devem ser um número positivo.")
+
+            temperatura_val = float(temperatura)
+            peso_val = float(peso) if peso else None
+
+            database.registrar_medida(
+                self.paciente_id, datetime.now(),
+                peso_val, sistolica, diastolica, batimentos_val, temperatura_val
+            )
 
             messagebox.showinfo("Sucesso", "Medida registrada com sucesso!")
-            self.limpar_campos() 
-            
+            self.limpar_campos()
+
             if self.callback_on_success:
                 self.callback_on_success()
-            
+
             self.window.destroy()
 
-        except ValueError:
-            messagebox.showerror("Erro", "Por favor, insira números válidos para Pressão, Batimentos e Temperatura.")
+        except ValueError as e:
+            messagebox.showerror("Erro de Validação", "Por favor, insira números válidos e positivos para Pressão, Batimentos e Temperatura.")
         except Exception as e:
-            messagebox.showerror("Erro", f"Ocorreu um erro inesperado ao registrar: {e}\n{traceback.format_exc()}")
+            # Detalhe técnico vai apenas para o log — o usuário vê uma mensagem genérica.
             log_error(f"Erro em registrar_medida: {e}\n{traceback.format_exc()}")
+            messagebox.showerror("Erro", "Ocorreu um erro inesperado ao registrar a medida. Verifique o log de erros.")
 
 if __name__ == "__main__":
     paciente_id_arg = None

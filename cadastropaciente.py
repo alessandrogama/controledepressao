@@ -1,6 +1,7 @@
 import database
 import sys
 import re
+import sqlite3
 from tkinter import *
 from tkinter import ttk, messagebox
 from datetime import datetime
@@ -203,8 +204,11 @@ class CadastroPacienteWindow:
 
             if self.callback_on_success:
                 self.callback_on_success()
-        except Exception as e:
-            messagebox.showerror("Erro", f"Erro ao cadastrar paciente: {e}")
+        except sqlite3.IntegrityError:
+            # Não exibe detalhes da constraint (ex.: nome da coluna) para o usuário.
+            messagebox.showerror("Erro de Validação", "Já existe um paciente cadastrado com esse CPF ou Cartão SUS.")
+        except Exception:
+            messagebox.showerror("Erro", "Ocorreu um erro inesperado ao cadastrar o paciente. Tente novamente.")
 
     def listar_pacientes(self):
         for item in self.tree.get_children():
