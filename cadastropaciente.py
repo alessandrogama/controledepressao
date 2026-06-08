@@ -294,7 +294,7 @@ class CadastroPacienteWindow:
 
         # ── Persistência ──────────────────────────────────────
         try:
-            database.cadastrar_paciente(nome, data_nasc, cpf, cartao_sus, telefone, email)
+            database.cadastrar_paciente(nome, data_nasc, cpf, cartao_sus, telefone, email, self.session)
             messagebox.showinfo("Sucesso", "Paciente cadastrado com sucesso!", parent=self.window)
             self.listar_pacientes()
             self._limpar_campos()

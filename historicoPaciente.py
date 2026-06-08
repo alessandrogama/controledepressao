@@ -23,8 +23,17 @@ def _parse_date(date_str: str):
             return None
 
 
-def historico_paciente(paciente_id):
+def historico_paciente(paciente_id, session=None):
     """Exibe a janela de histórico com tabela de medidas e gráficos evolutivos."""
+    # ── Trilha de Auditoria: Visualização de Histórico ────
+    if session:
+        database.registrar_log_auditoria(
+            session.get("id"),
+            session.get("username"),
+            session.get("role"),
+            "HISTORY_VIEWED",
+            f"patient_id={paciente_id}"
+        )
 
     # ── Janela principal ──────────────────────────────────────
     historico_window = Toplevel()

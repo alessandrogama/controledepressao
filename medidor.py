@@ -296,6 +296,7 @@ class RegistroMedidasWindow:
                 diastolica,
                 batimentos_val,
                 temperatura_val,
+                self.session,
             )
 
             messagebox.showinfo("Sucesso", "Medida registrada com sucesso!", parent=self.window)

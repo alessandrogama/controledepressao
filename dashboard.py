@@ -73,6 +73,13 @@ def abrir_medidor(paciente_id, nome_paciente):
 
 def abrir_cadastro():
     if _session["role"] not in ("administrador", "recepcionista"):
+        database.registrar_log_auditoria(
+            _session.get("id"),
+            _session.get("username"),
+            _session.get("role"),
+            "ACCESS_DENIED",
+            "Tentativa de abertura da tela de cadastro de pacientes bloqueada."
+        )
         messagebox.showwarning(
             "Acesso Negado",
             "Apenas administradores e recepcionistas possuem permissão para cadastrar pacientes.",
@@ -88,14 +95,49 @@ def abrir_cadastro():
         messagebox.showerror("Erro Inesperado", f"Ocorreu um erro ao abrir o cadastro: {e}")
 
 
-def historico_paciente(paciente_id):
+def abrir_auditoria():
+    if _session["role"] != "administrador":
+        database.registrar_log_auditoria(
+            _session.get("id"),
+            _session.get("username"),
+            _session.get("role"),
+            "ACCESS_DENIED",
+            "Tentativa de abertura do painel de auditoria do sistema bloqueada."
+        )
+        messagebox.showwarning(
+            "Acesso Negado",
+            "Acesso negado. Apenas administradores podem visualizar os registros de auditoria.",
+            parent=root
+        )
+        return
+    try:
+        from auditoria import AuditoriaWindow
+        AuditoriaWindow(root, _session)
+    except Exception as e:
+        messagebox.showerror("Erro Inesperado", f"Ocorreu um erro ao abrir a auditoria: {e}")
+
+
+def historico_paciente(paciente_id, session=None):
     try:
         import historicoPaciente
-        historicoPaciente.historico_paciente(paciente_id)
+        historicoPaciente.historico_paciente(paciente_id, session)
     except ImportError:
         messagebox.showerror("Erro", "Arquivo 'historicoPaciente.py' não encontrado!")
     except Exception as e:
         messagebox.showerror("Erro Inesperado", f"Ocorreu um erro ao abrir o histórico: {e}")
+
+
+def on_dashboard_close():
+    """Registra o log de LOGOUT e encerra o aplicativo."""
+    if _session:
+        database.registrar_log_auditoria(
+            _session.get("id"),
+            _session.get("username"),
+            _session.get("role"),
+            "LOGOUT",
+            "Sessão encerrada pelo fechamento da aplicação."
+        )
+    root.destroy()
 
 
 def on_treeview_click(event):
@@ -113,6 +155,13 @@ def on_treeview_click(event):
 
     if column == "#4":      # Medir
         if _session["role"] not in ("medico", "enfermeiro"):
+            database.registrar_log_auditoria(
+                _session.get("id"),
+                _session.get("username"),
+                _session.get("role"),
+                "ACCESS_DENIED",
+                f"Tentativa de medição no paciente_id={paciente_id} bloqueada."
+            )
             messagebox.showwarning(
                 "Acesso Negado",
                 "Apenas médicos e enfermeiros possuem permissão para registrar medições.",
@@ -122,6 +171,13 @@ def on_treeview_click(event):
         abrir_medidor(paciente_id, nome_paciente)
     elif column == "#5":    # Editar
         if _session["role"] not in ("administrador", "recepcionista"):
+            database.registrar_log_auditoria(
+                _session.get("id"),
+                _session.get("username"),
+                _session.get("role"),
+                "ACCESS_DENIED",
+                f"Tentativa de edição de cadastro no paciente_id={paciente_id} bloqueada."
+            )
             messagebox.showwarning(
                 "Acesso Negado",
                 "Apenas administradores e recepcionistas possuem permissão para editar dados cadastrais.",
@@ -131,13 +187,20 @@ def on_treeview_click(event):
         messagebox.showinfo("Em breve", "Funcionalidade de edição ainda não implementada.")
     elif column == "#6":    # Histórico
         if _session["role"] not in ("medico", "administrador"):
+            database.registrar_log_auditoria(
+                _session.get("id"),
+                _session.get("username"),
+                _session.get("role"),
+                "ACCESS_DENIED",
+                f"Tentativa de acesso ao histórico clínico do paciente_id={paciente_id} bloqueada."
+            )
             messagebox.showwarning(
                 "Acesso Negado",
                 "Apenas médicos e administradores possuem permissão para acessar o histórico clínico de gráficos.",
                 parent=root
             )
             return
-        historico_paciente(paciente_id)
+        historico_paciente(paciente_id, _session)
 
 
 # ──────────────────────────────────────────────────────────────
@@ -227,6 +290,17 @@ btn_atualizar = theme.HoverButton(
     command=_atualizar_lista,
 )
 btn_atualizar.pack(fill=X)
+
+btn_auditoria = theme.HoverButton(
+    sidebar,
+    style="sidebar",
+    text="  ✦  Auditoria do Sistema",
+    font=(theme.FONT_FAMILY, 11),
+    anchor=W,
+    padx=22,
+    pady=13,
+    command=abrir_auditoria,
+)
 
 # Rodapé da sidebar
 Frame(sidebar, bg=theme.BORDER, height=1).pack(side=BOTTOM, fill=X, padx=20, pady=6)
@@ -378,6 +452,13 @@ if __name__ == "__main__":
             text=f"Operador:\n{_session['username']} ({role_label})",
             fg=theme.ACCENT
         )
+        
+        # Registrar protocolo de fechamento para gravar LOGOUT
+        root.protocol("WM_DELETE_WINDOW", on_dashboard_close)
+        
+        # Exibir botão de auditoria se for administrador
+        if _session["role"] == "administrador":
+            btn_auditoria.pack(fill=X)
         
         # Restaurar janela principal
         root.deiconify()

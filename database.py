@@ -24,6 +24,40 @@ def verify_password(password: str, hashed: str) -> bool:
     except Exception:
         return False
 
+def registrar_log_auditoria(usuario_id: int | None, username: str | None, role: str | None, evento: str, detalhes: str):
+    """Grava um registro na trilha de auditoria de forma resiliente a falhas."""
+    try:
+        conn = obter_conexao()
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO log_auditoria (usuario_id, username, role, evento, detalhes)
+            VALUES (?, ?, ?, ?, ?)
+        """, (usuario_id, username, role, evento, detalhes))
+        conn.commit()
+    except Exception as e:
+        print(f"[AUDIT TRAIL ERROR] Falha ao registrar log de auditoria ({evento}): {e}")
+    finally:
+        if 'conn' in locals():
+            conn.close()
+
+def obter_logs_auditoria() -> list:
+    """Retorna os 150 registros mais recentes da trilha de auditoria para o administrador."""
+    try:
+        conn = obter_conexao()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT data_hora, username, role, evento, detalhes
+            FROM log_auditoria
+            ORDER BY id DESC
+            LIMIT 150
+        """)
+        logs = cursor.fetchall()
+        conn.close()
+        return logs
+    except Exception as e:
+        print(f"[AUDIT TRAIL ERROR] Falha ao recuperar logs de auditoria: {e}")
+        return []
+
 def autenticar_usuario(username, password) -> dict | None:
     """
     Autentica o usuário no banco de dados e retorna a sessão do usuário se bem-sucedido.
@@ -38,7 +72,13 @@ def autenticar_usuario(username, password) -> dict | None:
     if row:
         user_id, user_name, stored_hash, role = row
         if verify_password(password, stored_hash):
-            return {"id": user_id, "username": user_name, "role": role}
+            session = {"id": user_id, "username": user_name, "role": role}
+            registrar_log_auditoria(user_id, user_name, role, "LOGIN_SUCCESS", "Acesso autenticado com sucesso.")
+            return session
+        else:
+            registrar_log_auditoria(user_id, user_name, role, "LOGIN_FAILURE", "Falha de login: senha incorreta.")
+    else:
+        registrar_log_auditoria(None, username, None, "LOGIN_FAILURE", "Tentativa de login com usuário inexistente.")
     return None
 
 def obter_conexao():
@@ -46,7 +86,7 @@ def obter_conexao():
     return sqlite3.connect(DB_NAME)
 
 def inicializar_banco():
-    """Cria as tabelas paciente, endereco, medida e usuario caso não existam e realiza migrações."""
+    """Cria as tabelas paciente, endereco, medida, usuario e log_auditoria caso não existam."""
     conn = obter_conexao()
     cursor = conn.cursor()
 
@@ -56,6 +96,18 @@ def inicializar_banco():
         username TEXT UNIQUE NOT NULL,
         password_hash TEXT NOT NULL,
         role TEXT NOT NULL
+    )''')
+
+    # Cria a tabela log_auditoria
+    cursor.execute('''CREATE TABLE IF NOT EXISTS log_auditoria (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        usuario_id INTEGER,
+        username TEXT,
+        role TEXT,
+        evento TEXT NOT NULL,
+        detalhes TEXT,
+        data_hora DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (usuario_id) REFERENCES usuario(id) ON DELETE SET NULL
     )''')
 
     # Seed de usuários padrão (Apenas ambiente de desenvolvimento e testes)
@@ -160,8 +212,8 @@ def listar_pacientes():
     conn.close()
     return pacientes
 
-def cadastrar_paciente(nome, data_nascimento, cpf, cartao_sus, telefone, email):
-    """Insere um novo paciente no banco de dados, tratando campos opcionais vazios como None (NULL)."""
+def cadastrar_paciente(nome, data_nascimento, cpf, cartao_sus, telefone, email, operador_session=None):
+    """Insere um novo paciente no banco de dados e registra a ação na auditoria."""
     sus_val = cartao_sus.strip() if cartao_sus else None
     if not sus_val:
         sus_val = None
@@ -174,18 +226,46 @@ def cadastrar_paciente(nome, data_nascimento, cpf, cartao_sus, telefone, email):
     cursor = conn.cursor()
     cursor.execute("""INSERT INTO paciente (nome, data_nascimento, cpf, cartao_sus, telefone, email) 
                       VALUES (?, ?, ?, ?, ?, ?)""", (nome, data_nascimento, cpf_val, sus_val, telefone, email))
+    
+    # Obter ID gerado do paciente
+    cursor.execute("SELECT last_insert_rowid()")
+    paciente_id = cursor.fetchone()[0]
+    
     conn.commit()
     conn.close()
 
-def registrar_medida(paciente_id, data_hora, peso, sistolica, diastolica, pulsacao, temperatura):
-    """Insere uma nova medida no banco de dados."""
+    if operador_session:
+        registrar_log_auditoria(
+            operador_session.get("id"),
+            operador_session.get("username"),
+            operador_session.get("role"),
+            "PATIENT_CREATED",
+            f"patient_id={paciente_id}"
+        )
+
+def registrar_medida(paciente_id, data_hora, peso, sistolica, diastolica, pulsacao, temperatura, operador_session=None):
+    """Insere uma nova medida no banco de dados e registra a ação na auditoria."""
     conn = obter_conexao()
     cursor = conn.cursor()
     cursor.execute("""INSERT INTO medida (paciente_id, data_hora, peso, sistolica, diastolica, pulsacao, temperatura)
                       VALUES (?, ?, ?, ?, ?, ?, ?)""",
                    (paciente_id, data_hora, peso, sistolica, diastolica, pulsacao, temperatura))
+    
+    # Obter ID gerado da medida
+    cursor.execute("SELECT last_insert_rowid()")
+    medida_id = cursor.fetchone()[0]
+    
     conn.commit()
     conn.close()
+
+    if operador_session:
+        registrar_log_auditoria(
+            operador_session.get("id"),
+            operador_session.get("username"),
+            operador_session.get("role"),
+            "MEASUREMENT_RECORDED",
+            f"measurement_id={medida_id}, patient_id={paciente_id}"
+        )
 
 def obter_medidas_paciente(paciente_id):
     """Retorna o histórico de medidas de um paciente específico."""
